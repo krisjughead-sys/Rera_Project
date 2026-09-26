@@ -4,6 +4,6 @@ An early homebuyer research pilot for Maharashtra. The prototype stores a shortl
 
 ## Development
 
-Open `dist/index.html` locally. Run `node --test tests/*.test.mjs` and `node scripts/check-project-data.mjs` for the current checks.
+Open `dist/index.html` locally. Run `node --test tests/*.test.mjs` and `node scripts/check-project-data.mjs` for the current checks. The `Guardrails` workflow (`.github/workflows/ci.yml`) runs the same two checks on every pull request.
 
 Read `AGENTS.md` and `docs/CONTROL_PLANE.md` before assigning agent work. The public website is not launched, and automated data collection is not activated.
