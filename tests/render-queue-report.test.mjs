@@ -6,17 +6,37 @@ import { renderQueueReport } from '../scripts/render-queue-report.mjs';
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/rera-06-queue.json', import.meta.url), 'utf8'));
 const now = new Date('2026-01-02T12:00:00Z');
 
-test('renders each section and flags missing evidence without treating it as success', () => {
+test('classifies every synthetic issue and flags missing evidence', () => {
   const report = renderQueueReport(fixture, now);
-  for (const heading of ['Done', 'In progress', 'Blocked', 'Owner decisions']) {
-    assert.match(report, new RegExp(`## ${heading}`));
-  }
-  assert.match(report, /#101 Synthetic completed task/);
-  assert.match(report, /#102 Synthetic active task/);
-  assert.match(report, /#103 Synthetic QA failure.*CI failure.*independent review unavailable/);
-  assert.match(report, /#104 Synthetic owner decision.*CI unavailable.*independent review unavailable/);
-  assert.match(report, /#105 Synthetic queued task.*stale >24h; no linked PR/);
-  assert.doesNotMatch(report.match(/#102 Synthetic active task[^\n]*/)?.[0] ?? '', /CI unavailable|independent review unavailable/);
+  const sections = Object.fromEntries(report.split('## ').slice(1).map((chunk) => {
+    const [heading, ...body] = chunk.split('\n');
+    return [heading, body.join('\n')];
+  }));
+  assert.deepEqual(Object.keys(sections), ['Done', 'In progress', 'Blocked', 'Owner decisions']);
+  assert.match(sections.Done, /#101 Synthetic completed task/);
+  assert.match(sections['In progress'], /#102 Synthetic active task/);
+  assert.match(sections['In progress'], /#105 Synthetic queued task.*stale >24h; no linked PR/);
+  assert.match(sections.Blocked, /#103 Synthetic QA failure.*CI failure.*independent review unavailable/);
+  assert.match(sections.Blocked, /#106 Synthetic rejected task.*closed as not planned/);
+  assert.match(sections['Owner decisions'], /#104 Synthetic owner decision.*CI unavailable.*independent review unavailable/);
+  assert.doesNotMatch(sections['In progress'].match(/#102 Synthetic active task[^\n]*/)?.[0] ?? '', /CI unavailable|independent review unavailable/);
+});
+
+test('outdated approval and later change request do not count as current review', () => {
+  const copy = structuredClone(fixture);
+  copy.pullRequests[0].reviews[0].commitId = 'older-head';
+  assert.match(renderQueueReport(copy, now), /#102 Synthetic active task.*independent review unavailable/);
+  copy.pullRequests[0].reviews[0].commitId = 'synthetic-current-head';
+  copy.pullRequests[0].reviews.push({ author: 'reviewer', state: 'CHANGES_REQUESTED', commitId: 'synthetic-current-head' });
+  assert.match(renderQueueReport(copy, now), /#102 Synthetic active task.*independent review unavailable/);
+});
+
+test('escapes Markdown title syntax and rejects unsafe links', () => {
+  const copy = structuredClone(fixture);
+  copy.issues[0].title = 'Synthetic ](https://other.invalid) task';
+  assert.ok(renderQueueReport(copy, now).includes('Synthetic \\]\\(https://other.invalid\\) task'));
+  copy.issues[0].url = 'https://github.com.evil.invalid/example';
+  assert.throws(() => renderQueueReport(copy, now), /github.com HTTPS URLs/);
 });
 
 test('24-hour boundary is not stale and missing update is explicit', () => {
