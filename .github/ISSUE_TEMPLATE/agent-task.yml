@@ -1,0 +1,33 @@
+name: Bounded agent task
+description: A task that can be built and independently verified while Sid is away
+title: "[RERA-] "
+labels: ["agent-ready"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Buyer or system outcome
+      description: One observable change
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source evidence and constraints
+      description: Official links, source snapshots, access constraints; write "no real project facts" when appropriate
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checks
+      description: Specific test or visible behavior that another agent can challenge
+    validations:
+      required: true
+  - type: textarea
+    id: stop
+    attributes:
+      label: Stop conditions and budget
+      description: When to mark blocked or cost-paused instead of retrying
+    validations:
+      required: true
