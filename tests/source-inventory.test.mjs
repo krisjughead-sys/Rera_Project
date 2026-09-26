@@ -37,3 +37,19 @@ test('document contains no real-project registration number or coordinate pair',
   assert.equal(doc.match(/\bP\d{11}\b/g), null, 'registration-number-shaped string present');
   assert.equal(doc.match(/\b1[6-9]\.\d{4,}\s*,\s*7[2-9]\.\d{4,}\b/g), null, 'Maharashtra-range coordinate pair present');
 });
+
+// Regression: Codex review on PR #4 flagged specific negative claims and unhedged
+// "live"/cadence assertions built on unread sources. These checks keep them from
+// creeping back in as the document evolves.
+test('no unhedged specific-negative "if unavailable" claim (must say unavailable / could not verify)', () => {
+  const forbidden = ['no revision published', 'no extension on record', 'no update in current quarter'];
+  for (const phrase of forbidden) assert.ok(!doc.includes(phrase), `found unhedged negative claim: "${phrase}"`);
+});
+
+test('no source-inventory table row asserts a bare "live" cadence without hedging', () => {
+  for (const row of rows) assert.ok(!row.some(cell => /^live$/i.test(cell)), `${row[0]}: bare "live" cadence cell asserts freshness as fact`);
+});
+
+test('no staleness/overdue threshold is computed from the unread S09 order', () => {
+  assert.equal(doc.match(/\b\d+\s*days?\b.*overdue|overdue.*\b\d+\s*days?\b/is), null, 'a numeric overdue threshold is stated as if confirmed');
+});
