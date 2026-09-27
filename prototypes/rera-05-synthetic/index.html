@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>RERA-05 synthetic prototype (unshipped)</title>
+<style>
+:root{--ink:#142638;--muted:#4e6577;--bg:#f5f8fb;--card:#fff;--line:#dbe5ec;--teal:#0b6b74;--slate:#5a6b78;--amber:#8a5a00;--rust:#8c2f1c;--focus:#0b4f8a}
+*{box-sizing:border-box}html{font-size:16px}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);line-height:1.5;overflow-wrap:anywhere}
+button,input{font:inherit}
+a{color:#075a93}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.ribbon{background:#4a1d96;color:#fff;text-align:center;font-weight:700;padding:6px 8px;font-size:.875rem}
+header{background:#102b43;color:#fff;min-height:56px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+header strong{font-size:1.05rem}
+main{max-width:720px;margin:auto;padding:16px 16px 88px}
+h1{font-size:1.35rem;margin:8px 0 4px}h2{font-size:1.1rem;margin:20px 0 8px}
+.id{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1rem;white-space:nowrap;display:block}
+.hint{color:var(--muted);font-size:.875rem;margin:6px 0 12px}
+.search{display:flex;gap:8px}
+.search input{flex:1;min-height:48px;padding:10px 12px;border:1px solid #b8cad5;border-radius:8px;min-width:0}
+.btn{min-height:44px;min-width:44px;padding:10px 14px;border-radius:8px;border:1px solid var(--teal);background:var(--teal);color:#fff;cursor:pointer}
+.btn.secondary{background:#eaf2f4;color:#1b5360;border-color:#cfe0e4}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.card h3{margin:0 0 2px;font-size:1.05rem}
+.meta{color:var(--muted);font-size:.9375rem}
+.row-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.state{display:inline-flex;align-items:center;gap:4px;font-size:.9375rem;font-weight:600}
+.state.verified{color:var(--teal)}.state.unavailable,.state.unknown{color:var(--slate)}.state.older{color:var(--amber)}.state.conflict{color:var(--rust)}
+.record{border:2px solid #cfdce4}
+.record h2{margin:0 0 8px;font-size:1rem;letter-spacing:.04em;text-transform:uppercase;color:var(--teal)}
+dl{margin:0}
+.field{border-top:1px solid var(--line);padding:10px 0}
+.field dt{font-weight:600}
+.field dd{margin:2px 0 0}
+.value{font-size:1.125rem}
+.prov{font-size:.875rem;color:var(--muted);margin-top:2px}
+.change{font-size:.875rem;background:#fff6e5;border-left:3px solid var(--amber);padding:6px 8px;margin-top:6px}
+.foot{border-top:1px solid var(--line);padding-top:8px;margin-top:8px;font-size:.875rem;color:var(--muted)}
+.explain{background:#eaf4f4;border-radius:12px;padding:14px;margin:24px 0}
+.explain h2{margin:0 0 6px;font-size:1rem;color:#254c56}
+.ad{margin:32px 0 0;padding:12px;border:2px dotted #9aa8b3;border-radius:4px;background:#f0f0f0;color:#333}
+.ad small{display:block;font-size:.875rem;font-weight:700;margin-bottom:4px}
+.rule{border:0;border-top:1px solid #9aa8b3;margin:24px 0 0}
+.bar{position:fixed;left:0;right:0;bottom:0;height:56px;background:#fff;border-top:1px solid var(--line);display:flex;gap:8px;padding:6px 16px;align-items:center;justify-content:space-between}
+.bar .btn{flex:1}
+.chip{display:inline-block;font-size:.875rem;padding:2px 8px;border-radius:999px;background:#eef2f5;margin-top:6px}
+.mismatch{border-color:#9aa8b3;background:#f7f7f7}
+.id.inline{display:inline}
+.printed{display:inline}.printed summary{display:inline;min-height:0;font-size:.875rem;color:var(--muted)}
+.explain.compact{margin:10px 0 0}
+.qa{margin-top:24px;padding:12px;border:1px dashed #9aa8b3;border-radius:8px;font-size:.9375rem}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;vertical-align:top;padding:8px 4px;border-top:1px solid var(--line)}
+th .id{white-space:normal}
+details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+@media (max-width:389px){table,thead,tbody,tr,th,td{display:block}thead tr{display:grid;grid-template-columns:1fr 1fr}tr{border-top:2px solid var(--line);padding:6px 0}td::before{content:attr(data-col);display:block;font-size:.8125rem;color:var(--muted)}td[data-col=""]::before{content:none;display:none}th,td{border-top:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="ribbon" role="note">Synthetic data. Unshipped prototype for RERA-05. No real project facts. Readings are dated 26 Sep 2026; ages use your device clock.</div>
+<header><strong>Maharashtra Project Monitor</strong><span class="meta" style="color:#aad5e9">pilot prototype</span></header>
+<main id="app" aria-live="polite"></main>
+<nav class="bar" aria-label="Main">
+  <a class="btn secondary" href="#search" id="nav-shortlist">Shortlist (0)</a>
+  <a class="btn secondary" href="#compare">Compare</a>
+  <a class="btn secondary" href="#changes">Changes</a>
+</nav>
+
+<script type="application/json" id="synthetic-data">
+{
+  "generatedAt": "2026-09-26",
+  "freshnessWindowDays": 90,
+  "sourceNote": "All URLs below point at example.invalid on purpose. A real build links to the exact official MahaRERA page for each field.",
+  "projects": [
+    {
+      "reraId": "P00000000001", "pageId": "P00000000001",
+      "name": "Sample Heights Phase 1", "locality": "Testpur, Sample District", "promoter": "Sample Builders Pvt Ltd",
+      "fields": [
+        {"key":"registrationStatus","label":"Registration status","status":"verified","value":"Registered","printed":"Registered","sourceUrl":"https://example.invalid/synthetic/P00000000001/project","documentDate":"2026-01-02","retrievedAt":"2026-09-20"},
+        {"key":"completionDate","dateKind":"original","label":"Proposed completion (as registered)","status":"verified","value":"2027-12-31","printed":"31.12.2027","sourceUrl":"https://example.invalid/synthetic/P00000000001/project","documentDate":"2026-01-02","retrievedAt":"2026-09-20"},
+        {"key":"completionDate","dateKind":"revised","label":"Revised proposed completion","status":"verified","value":"2028-06-30","printed":"30.06.2028","sourceUrl":"https://example.invalid/synthetic/P00000000001/project","documentDate":"2026-04-02","retrievedAt":"2026-09-20",
+          "change":{"before":null,"beforeRetrievedAt":"2026-06-15","after":"2028-06-30","afterRetrievedAt":"2026-09-20"}},
+        {"key":"completionDate","dateKind":"extended","label":"Extension of registration","status":"unknown"},
+        {"key":"litigation","label":"Litigation","status":"unavailable","retrievedAt":"2026-09-20"},
+        {"key":"coordinates","label":"Location on map","status":"unavailable","retrievedAt":"2026-09-20"}
+      ]
+    },
+    {
+      "reraId": "P00000000002", "pageId": "P00000000002",
+      "name": "Sample Heights Phase 2", "locality": "Testpur, Sample District", "promoter": "Sample Builders Pvt Ltd",
+      "fields": [
+        {"key":"registrationStatus","label":"Registration status","status":"verified","value":"Registered","printed":"Registered","sourceUrl":"https://example.invalid/synthetic/P00000000002/project","documentDate":"2026-01-02","retrievedAt":"2026-06-15"},
+        {"key":"completionDate","dateKind":"original","label":"Proposed completion (as registered)","status":"verified","value":"2029-03-31","printed":"31.03.2029","sourceUrl":"https://example.invalid/synthetic/P00000000002/project","documentDate":"2026-01-02","retrievedAt":"2026-06-15"},
+        {"key":"completionDate","dateKind":"revised","label":"Revised proposed completion","status":"unavailable","retrievedAt":"2026-09-20"},
+        {"key":"completionDate","dateKind":"extended","label":"Extension of registration","status":"unknown"},
+        {"key":"litigation","label":"Litigation","status":"unavailable","retrievedAt":"2026-09-20"},
+        {"key":"coordinates","label":"Location on map","status":"unavailable","retrievedAt":"2026-09-20"}
+      ]
+    },
+    {
+      "reraId": "P00000000003", "pageId": "P00000000003",
+      "name": "Sample Heights", "locality": "Sampelwadi, Other District", "promoter": "Sampel Builders LLP",
+      "fields": [
+        {"key":"registrationStatus","label":"Registration status","status":"conflict","values":[
+          {"value":"Registered","printed":"Registered","sourceLabel":"Project page","sourceUrl":"https://example.invalid/synthetic/P00000000003/project","documentDate":"2026-01-02","retrievedAt":"2026-09-20"},
+          {"value":"Lapsed","printed":"Lapsed","sourceLabel":"Lapsed list","sourceUrl":"https://example.invalid/synthetic/lists/lapsed","documentDate":"2026-08-01","retrievedAt":"2026-09-20"}]},
+        {"key":"completionDate","dateKind":"original","label":"Proposed completion (as registered)","status":"verified","value":"2026-03-31","printed":"31.03.2026","sourceUrl":"https://example.invalid/synthetic/P00000000003/project","documentDate":"2026-01-02","retrievedAt":"2026-09-20"},
+        {"key":"completionDate","dateKind":"revised","label":"Revised proposed completion","status":"unavailable","retrievedAt":"2026-09-20"},
+        {"key":"completionDate","dateKind":"extended","label":"Extension of registration","status":"unknown"},
+        {"key":"litigation","label":"Litigation","status":"unavailable","retrievedAt":"2026-09-20"},
+        {"key":"coordinates","label":"Location on map","status":"unavailable","retrievedAt":"2026-09-20"}
+      ]
+    },
+    {
+      "reraId": "P00000000004", "pageId": "P00000000001",
+      "name": "Sample Heights Phase 1 (stale link fixture)", "locality": "Testpur, Sample District", "promoter": "Sample Builders Pvt Ltd",
+      "fields": [
+        {"key":"registrationStatus","label":"Registration status","status":"verified","value":"Registered","printed":"Registered","sourceUrl":"https://example.invalid/synthetic/P00000000001/project","documentDate":"2026-01-02","retrievedAt":"2026-09-20"}
+      ]
+    }
+  ]
+}
+</script>
+<script src="core.js"></script>
+<script>
+(() => {
+const DATA = JSON.parse(document.getElementById('synthetic-data').textContent);
+const store = { get: k => localStorage.getItem(k), set: (k, v) => localStorage.setItem(k, v) };
+const proto = Rera05.createPrototype(DATA, store, () => new Date());
+const app = document.getElementById('app');
+function route() {
+  const h = location.hash || '#search';
+  const [, view, arg] = h.match(/^#([a-z]+)\/?(.*)$/) || [null, 'search', ''];
+  if (view === 'project') app.innerHTML = proto.renderProject(decodeURIComponent(arg));
+  else if (view === 'compare') app.innerHTML = proto.renderCompare();
+  else if (view === 'changes') app.innerHTML = proto.renderChanges();
+  else app.innerHTML = proto.renderSearch(decodeURIComponent(arg));
+  document.getElementById('nav-shortlist').textContent = `Shortlist (${proto.read().length})`;
+  const f = document.getElementById('f');
+  if (f) f.onsubmit = e => { e.preventDefault(); location.hash = '#search/' + encodeURIComponent(document.getElementById('q').value); };
+  window.scrollTo(0, 0);
+}
+app.addEventListener('click', e => {
+  const t = e.target.closest('[data-toggle]');
+  if (t) { proto.toggleShortlist(t.dataset.toggle); route(); return; }
+  const v = e.target.closest('[data-illustrative-visit]');
+  if (v) { proto.recordIllustrativeVisit(v.dataset.illustrativeVisit); location.hash = '#search'; route(); }
+});
+window.addEventListener('hashchange', route);
+route();
+})();
+</script>
+</body>
+</html>
