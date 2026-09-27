@@ -2,6 +2,8 @@
 
 This repository powers a homebuyer site. An official-looking statement about a real project can materially affect a buyer's decision.
 
+General session conduct (work style, progress reporting, research and decision records) is in `docs/WORKING_AGREEMENTS.md`. The rules below are project-specific and take precedence where they overlap.
+
 ## Work protocol
 
 - Select one GitHub issue carrying `agent-ready`. Repeat its ID in the branch, PR title and acceptance evidence.
