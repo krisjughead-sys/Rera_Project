@@ -154,7 +154,7 @@ node --test tests/*.test.mjs        # includes tests/source-inventory.test.mjs
 node scripts/check-project-data.mjs  # "No project dataset yet: safe prototype stage."
 ```
 
-The inventory test asserts that every `S` row in this document carries an https URL or an explicit `?`/`n/a`, a UTC retrieved-at timestamp, an evidence level L0 to L3, and that the document contains no string shaped like a real registration number.
+The inventory test asserts that every `S` row in this document carries an official https URL in any of its cells or is marked L3, a UTC retrieved-at timestamp, an evidence level L0 to L3, and that the document contains no string shaped like a real registration number. It also allow-lists the section 5 "If unavailable" column: each cell must begin with exactly `unavailable / could not verify`, `do not create the record` or `omit`, so any wording that asserts absence fails whatever its spelling; and it rejects a numeric overdue or staleness threshold in any sentence that does not itself say the threshold must not be used.
 
 ## 11. Independent review dispositions
 
@@ -167,3 +167,10 @@ Review: [Codex, PR #4 review #5326387028](https://github.com/krisjughead-sys/Rer
 | 3 | Section 9 proposed opening a project page "chosen by the owner"; manual owner selection isn't necessary unless source policy requires it, and the exact domain/access path should be confirmed first. | Fixed. Section 9 now asks to confirm the exact domain and access path first (S01 vs legacy S04/S14 vs a possible MahaCRITI public URL), and to pick any publicly reachable project page by its own registration ID rather than by owner selection, unless a specific access or consent restriction requires sign-off. Kept "no values published". | this commit |
 
 CI on this commit: see section 10; the PR body records the exact run link and conclusion once pushed.
+
+## 12. Open coordination items (not resolved in this PR)
+
+| # | Item | Where it shows | Decision needed from |
+|---|---|---|---|
+| C1 | **Record field names diverge between this map and the draft contract.** Section 5 uses `originalCompletion`, `revisedCompletion` and `extensionCompletion`, matching the base validator fixture in `tests/record-validation.test.mjs`. PR #8 (`scripts/change-contract.mjs`) and PR #9 (`prototypes/rera-05-synthetic/`) model one `completionDate` key with a `dateKind` of `original`, `revised` or `extended`. Both cannot be the provenance map. This document deliberately keeps the base-validator names until the owner decides; nothing here or in PR #8 has chosen a side. | Section 5 "Record field" column; PR #8 `fieldIdentity`; PR #9 fixture `fields[].key` | Owner, before any of #4, #8 or #9 is treated as the published schema |
+
