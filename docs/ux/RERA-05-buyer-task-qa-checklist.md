@@ -55,7 +55,9 @@ Record: date, viewport, browser, commit, and the row results in the PR body.
 ## 6. Return later
 
 - [ ] Open Changes for the first time. The hint reads "First visit: recorded now." Reload and open the shortlist: each card shows "Not re-checked since your last visit on <today>: <all field names>" and no "Changed" chip, because every synthetic reading predates today.
-- [ ] On Changes, press "Pretend my last visit was 01 Sep 2026". The shortlist chip on Phase 1 reads "Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion", plus a "Re-checked ... no change detected: <fields>" chip and a "Not re-checked ...: Extension of registration" chip. No chip says "No change detected" for the project as a whole.
+- [ ] On Changes, press "Pretend my last visit was 01 Sep 2026". The shortlist chip on Phase 1 reads "Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion", plus a "Re-checked ... no change detected: Registration status, Proposed completion (as registered)" chip, a "Could not verify on the later check ...: Litigation, Location on map" chip and a "Not re-checked ...: Extension of registration" chip. No chip says "No change detected" for the project as a whole, and no field marked "Could not verify" ever appears under "no change detected".
+- [ ] Change the device date to a year in the future and open the search for "stale link". The mismatch card still says "Could not verify in our reading dated 26 Sep 2026"; the device date never appears in any verification sentence.
+- [ ] Add "Sample Heights" (P00000000003) and Phase 1 to the shortlist and open Compare. The "Last verified" row shows "20 Sep 2026 (N days ago)" for both, not "Not checked yet", even though the first row of P00000000003 is a contradiction.
 - [ ] Remove Phase 2 and reload. It stays removed. Add an ID that does not resolve (P00000000009) and reload. It remains in the list with "Record not found in our reading" and a Remove button.
 
 ## 7. Accessibility spot checks

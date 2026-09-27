@@ -16,6 +16,14 @@
     const now = () => (clock ? clock() : new Date());
     const todayIso = () => now().toISOString().slice(0, 10);
     const daysSince = iso => Math.round((now() - new Date(iso + 'T00:00:00Z')) / 86400000);
+    // The date of our reading comes from the dataset, never from the visitor's
+    // device clock: a "could not verify on D" sentence must name a day on which
+    // a read was actually attempted.
+    const readingDate = () => fmtDate(DATA.generatedAt);
+    // Latest retrieval date across every field of a record, including the
+    // sides of a conflict. Null when nothing has been read.
+    const fieldReadAt = f => f.status === 'conflict' ? (f.values || []).map(v => v.retrievedAt).filter(Boolean).sort().pop() || null : (f.retrievedAt || null);
+    const latestReadAt = p => p.fields.map(fieldReadAt).filter(Boolean).sort().pop() || null;
 
     // Data/view boundary: a record whose page carried a different registration
     // number than requested is a mismatch. Its fields are dropped here, so no
@@ -64,7 +72,7 @@
       if (s === 'unknown') return 'Not checked yet';
       return '';
     }
-    const mismatchText = p => `Could not verify on ${fmtDate(todayIso())}: the page we read carried a different registration number (${p.pageId}) from the one requested (${p.reraId}). No fields are shown and this record cannot be shortlisted.`;
+    const mismatchText = p => `Could not verify in our reading dated ${readingDate()}: the page we read carried a different registration number (${p.pageId}) from the one requested (${p.reraId}). No fields are shown and this record cannot be shortlisted.`;
 
     function valueHtml(f) {
       const v = isDate(f.value) ? `<time datetime="${f.value}">${fmtDate(f.value)}</time>` : esc(f.value);
@@ -93,10 +101,15 @@
     function visitSummary(p) {
       const lv = lastVisit();
       if (!lv || p.mismatch) return null;
+      const later = f => { const r = fieldReadAt(f); return !!(r && r > lv.date); };
       const changed = p.fields.filter(f => f.change && f.change.afterRetrievedAt > lv.date).map(f => f.label);
-      const checked = p.fields.filter(f => f.retrievedAt && f.retrievedAt > lv.date && !changed.includes(f.label)).map(f => f.label);
-      const notChecked = p.fields.filter(f => !(f.retrievedAt && f.retrievedAt > lv.date)).map(f => f.label);
-      return { lv, changed, checked, notChecked };
+      // "No change detected" is only ever said about a field whose later
+      // reading was itself verified. A later reading that came back
+      // unavailable, unknown or contradictory proves nothing about change.
+      const checked = p.fields.filter(f => later(f) && f.status === 'verified' && !changed.includes(f.label)).map(f => f.label);
+      const couldNotVerify = p.fields.filter(f => later(f) && f.status !== 'verified' && !changed.includes(f.label)).map(f => f.label);
+      const notChecked = p.fields.filter(f => !later(f)).map(f => f.label);
+      return { lv, changed, checked, couldNotVerify, notChecked };
     }
     function shortlistChip(p) {
       const v = visitSummary(p);
@@ -105,8 +118,17 @@
       const parts = [];
       if (v.changed.length) parts.push(`Changed ${since}: ${v.changed.join(', ')}`);
       if (v.checked.length) parts.push(`Re-checked ${since}, no change detected: ${v.checked.join(', ')}`);
+      if (v.couldNotVerify.length) parts.push(`Could not verify on the later check ${since}: ${v.couldNotVerify.join(', ')}`);
       if (v.notChecked.length) parts.push(`Not re-checked ${since}: ${v.notChecked.join(', ')}`);
       return parts.map(t => `<span class="chip">${esc(t)}</span>`).join(' ');
+    }
+
+    // Headline: the registration-status field when present, else the first
+    // field, else an explicit "Not checked yet". Never assumes fields[0] exists.
+    function headline(p) {
+      const f = p.fields.find(x => x.key === 'registrationStatus') || p.fields[0];
+      if (!f) return stateBadge('unknown');
+      return `${stateBadge(effState(f))}${f.status === 'verified' ? ': ' + esc(f.value) : ''}`;
     }
 
     function projectCard(p, inList) {
@@ -116,7 +138,7 @@
           (inList ? `<div class="row-actions"><button class="btn secondary" data-toggle="${esc(p.reraId)}">Remove from shortlist</button></div>` : '') + `</article>`;
       }
       return `<article class="card">${head}
-    <div>${stateBadge(effState(p.fields[0]))}${p.fields[0].status === 'verified' ? ': ' + esc(p.fields[0].value) : ''}</div>
+    <div>${headline(p)}</div>
     ${shortlistChip(p)}
     <div class="row-actions"><button class="btn secondary" data-toggle="${esc(p.reraId)}">${inList ? 'Remove from shortlist' : 'Add to shortlist'}</button><a class="btn" href="#project/${esc(p.reraId)}">Open</a></div></article>`;
     }
@@ -131,14 +153,14 @@
       html += results.map(p => projectCard(p, list.includes(p.reraId))).join('');
       html += `<h2>Your shortlist</h2>`;
       if (!list.length) html += `<p class="hint">Your shortlist is empty. It is saved in this browser only.</p>`;
-      html += list.map(id => { const p = byId(id); return p ? projectCard(p, true) : `<article class="card"><span class="id">${esc(id)}</span><p>Record not found in our reading on ${fmtDate(todayIso())}. Check MahaRERA.</p><button class="btn secondary" data-toggle="${esc(id)}">Remove</button></article>`; }).join('');
+      html += list.map(id => { const p = byId(id); return p ? projectCard(p, true) : `<article class="card"><span class="id">${esc(id)}</span><p>Record not found in our reading dated ${readingDate()}. Check MahaRERA.</p><button class="btn secondary" data-toggle="${esc(id)}">Remove</button></article>`; }).join('');
       if (results.length) html += `<hr class="rule"><aside class="ad" aria-label="Sponsored"><small>Sponsored</small>Placeholder for a labelled advertisement. It never sits inside a project card.</aside>`;
       return html;
     }
 
     function renderProject(id) {
       const p = byId(id);
-      if (!p) return `<a href="#search">‹ Back</a><h1>Record not found</h1><span class="id">${esc(id)}</span><p>Record not found in our reading on ${fmtDate(todayIso())}. Check MahaRERA. No similarly named project is shown in its place.</p>`;
+      if (!p) return `<a href="#search">‹ Back</a><h1>Record not found</h1><span class="id">${esc(id)}</span><p>Record not found in our reading dated ${readingDate()}. Check MahaRERA. No similarly named project is shown in its place.</p>`;
       const head = `<a href="#search">‹ Back</a><h1>${esc(p.name)}</h1><span class="id">${esc(p.reraId)}</span><div class="meta">${esc(p.locality)}</div><div class="meta">${esc(p.promoter)}</div>`;
       if (p.mismatch) return head + `<section class="card record mismatch"><h2>Official record</h2>${stateBadge('unavailable')}<p>${esc(mismatchText(p))}</p></section>`;
       const list = read();
@@ -168,7 +190,7 @@
       const cell = (p, key, kind) => {
         if (p.mismatch) return `${stateBadge('unavailable')}<br>${esc(mismatchText(p))}`;
         if (key === '__promoter') return esc(p.promoter);
-        if (key === '__lastVerified') { const f = p.fields[0]; const s = effState(f); return f.retrievedAt ? `${daysSince(f.retrievedAt)} days ago${s === 'older' ? '<br>' + stateBadge('older') : ''}` : 'Not checked yet'; }
+        if (key === '__lastVerified') { const r = latestReadAt(p); if (!r) return 'Not checked yet'; const older = daysSince(r) > DATA.freshnessWindowDays; return `${fmtDate(r)} (${daysSince(r)} days ago)${older ? '<br>' + stateBadge('older') : ''}`; }
         return cellFor(p, key, kind);
       };
       return `<h1>Compare</h1><p class="hint">This compares official records as we read them. It does not rank projects.</p><table><thead><tr><th scope="col" data-col=""></th>${th(a)}${th(b)}</tr></thead><tbody>` +
@@ -195,7 +217,7 @@
       return html;
     }
 
-    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, shortlistChip, stateText, mismatchText, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
+    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, shortlistChip, stateText, mismatchText, latestReadAt, headline, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
   }
 
   if (typeof module !== 'undefined' && module.exports) module.exports = { createPrototype };

@@ -161,7 +161,8 @@ test('return-later: chips list changed, re-checked and not-re-checked fields sep
   const { p } = boot({ visit: { date: '2026-09-01', illustrative: true } });
   const s1 = p.visitSummary(p.byId('P00000000001'));
   assert.deepEqual(s1.changed, ['Revised proposed completion']);
-  assert.ok(s1.checked.includes('Registration status') && s1.checked.includes('Litigation'));
+  assert.deepEqual(s1.checked, ['Registration status', 'Proposed completion (as registered)']);
+  assert.deepEqual(s1.couldNotVerify, ['Litigation', 'Location on map']);
   assert.deepEqual(s1.notChecked, ['Extension of registration']);
   const chip1 = textOf(p.shortlistChip(p.byId('P00000000001')));
   assert.match(chip1, /Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion/);
@@ -170,7 +171,72 @@ test('return-later: chips list changed, re-checked and not-re-checked fields sep
   const s2 = p.visitSummary(p.byId('P00000000002'));
   assert.deepEqual(s2.changed, []);
   assert.ok(s2.notChecked.includes('Registration status') && s2.notChecked.includes('Proposed completion (as registered)'), 'June readings are not re-checks since a September visit');
-  assert.match(textOf(p.shortlistChip(p.byId('P00000000002'))), /Re-checked since .*no change detected: Revised proposed completion, Litigation, Location on map/);
+  const chip2 = textOf(p.shortlistChip(p.byId('P00000000002')));
+  assert.match(chip2, /Could not verify on the later check since your illustrative last visit on 01 Sep 2026: Revised proposed completion, Litigation, Location on map/);
+  assert.ok(!chip2.includes('no change detected'), 'a failed later read must never be reported as no change');
+  assert.deepEqual(s2.checked, []);
+});
+
+// Review finding: a later reading that came back unavailable is not evidence of "no change".
+test('return-later: an unavailable field re-read after the visit is reported as could-not-verify, never as no change', () => {
+  const { p } = boot({ visit: { date: '2026-09-01', illustrative: true } });
+  for (const id of ['P00000000001', 'P00000000002', 'P00000000003']) {
+    const v = p.visitSummary(p.byId(id));
+    const raw = data.projects.find(x => x.reraId === id).fields;
+    for (const label of v.checked) assert.equal(raw.find(f => f.label === label).status, 'verified', `${id}: "${label}" listed as re-checked but not verified`);
+    for (const label of v.couldNotVerify) assert.notEqual(raw.find(f => f.label === label).status, 'verified');
+    const chip = textOf(p.shortlistChip(p.byId(id)));
+    const noChange = chip.match(/no change detected: ([^]*?)(?= Could not verify| Not re-checked|$)/);
+    if (noChange) for (const label of noChange[1].split(', ').map(x => x.trim()).filter(Boolean)) assert.equal(raw.find(f => f.label === label).status, 'verified', `${id}: "${label}" under no change detected`);
+  }
+  // The conflict fixture's later reading is a contradiction, not a verification.
+  const v3 = p.visitSummary(p.byId('P00000000003'));
+  assert.ok(v3.couldNotVerify.includes('Registration status'));
+  assert.ok(!v3.checked.includes('Registration status'));
+});
+
+// Review finding: a "could not verify on D" sentence must name a reading date, not the visitor's clock.
+test('verification wording never derives a date from the device clock', () => {
+  const { p } = boot({ shortlist: ['P00000000004', 'P00000000009'], today: '2031-01-01' });
+  const search = textOf(p.renderSearch('stale link'));
+  assert.ok(!search.includes('2031'), 'device-clock year leaked into verification wording');
+  assert.match(search, /Could not verify in our reading dated 26 Sep 2026: the page we read carried a different registration number/);
+  assert.match(search, /Record not found in our reading dated 26 Sep 2026/);
+  const missing = textOf(p.renderProject('P00000000009'));
+  assert.ok(!missing.includes('2031'));
+  assert.match(missing, /Record not found in our reading dated 26 Sep 2026/);
+  assert.match(textOf(p.renderProject('P00000000004')), /Could not verify in our reading dated 26 Sep 2026/);
+});
+
+// Review finding: "Last verified" must consider every field, not fields[0].
+test('compare: Last verified is the latest reading across all fields, including conflict sides', () => {
+  const { p } = boot({ shortlist: ['P00000000003', 'P00000000001'] });
+  assert.equal(p.latestReadAt(p.byId('P00000000003')), '2026-09-20');
+  assert.equal(p.latestReadAt(p.byId('P00000000002')), '2026-09-20', 'a later unavailable read still counts as the latest read attempt');
+  const html = p.renderCompare();
+  const row = textOf(html.match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]);
+  assert.match(row, /Last verified 20 Sep 2026 \(6 days ago\) 20 Sep 2026 \(6 days ago\)/);
+  assert.ok(!row.includes('Not checked yet'));
+  // Stale readings carry the older badge from the same latest date.
+  const stale = boot({ shortlist: ['P00000000001', 'P00000000002'], today: '2027-01-15' });
+  assert.match(textOf(stale.p.renderCompare().match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]), /Older snapshot/);
+});
+
+// Review finding: a record with no fields must render, not throw.
+test('a record with an empty field list renders an explicit Not checked yet headline and compare cells', () => {
+  const copy = structuredClone(data);
+  copy.projects.push({ reraId: 'P00000000005', pageId: 'P00000000005', name: 'Sample Empty Record', locality: 'Testpur', promoter: 'Sample Builders Pvt Ltd', fields: [] });
+  const m = new Map();
+  m.set('rera05-synthetic-shortlist-v1', JSON.stringify(['P00000000005', 'P00000000001']));
+  const p = createPrototype(copy, { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }, () => new Date('2026-09-26T09:00:00Z'));
+  const card = p.renderSearch('Sample Empty');
+  assert.match(textOf(card), /Sample Empty Record P00000000005 .*Not checked yet/);
+  assert.equal(p.latestReadAt(p.byId('P00000000005')), null);
+  const cells = [...p.renderCompare().matchAll(/<td data-col="Sample Empty Record">([^]*?)<\/td>/g)].map(x => textOf(x[1]).trim());
+  assert.equal(cells.length, 7);
+  assert.ok(cells.every(c => c === 'Not checked yet' || c === 'Sample Builders Pvt Ltd'), JSON.stringify(cells));
+  assert.doesNotThrow(() => p.renderProject('P00000000005'));
+  assert.doesNotThrow(() => p.renderChanges());
 });
 
 test('return-later: a real visit is recorded from the clock, and a later visit finds nothing re-checked', () => {
