@@ -166,6 +166,7 @@ test('return-later: chips list changed, re-checked and not-re-checked fields sep
   assert.deepEqual(s1.notChecked, ['Extension of registration']);
   const chip1 = textOf(p.shortlistChip(p.byId('P00000000001')));
   assert.match(chip1, /Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion/);
+  assert.match(chip1, /Verified on a later check since your illustrative last visit on 01 Sep 2026; earlier value not available for comparison: Registration status, Proposed completion \(as registered\)/);
   assert.match(chip1, /Not re-checked since your illustrative last visit on 01 Sep 2026: Extension of registration/);
   assert.ok(!chip1.includes('No change detected'), 'no whole-project "No change detected" sentence');
   const s2 = p.visitSummary(p.byId('P00000000002'));
@@ -186,8 +187,7 @@ test('return-later: an unavailable field re-read after the visit is reported as 
     for (const label of v.checked) assert.equal(raw.find(f => f.label === label).status, 'verified', `${id}: "${label}" listed as re-checked but not verified`);
     for (const label of v.couldNotVerify) assert.notEqual(raw.find(f => f.label === label).status, 'verified');
     const chip = textOf(p.shortlistChip(p.byId(id)));
-    const noChange = chip.match(/no change detected: ([^]*?)(?= Could not verify| Not re-checked|$)/);
-    if (noChange) for (const label of noChange[1].split(', ').map(x => x.trim()).filter(Boolean)) assert.equal(raw.find(f => f.label === label).status, 'verified', `${id}: "${label}" under no change detected`);
+    assert.ok(!chip.includes('no change detected'), `${id}: no before value exists for an unchanged claim`);
   }
   // The conflict fixture's later reading is a contradiction, not a verification.
   const v3 = p.visitSummary(p.byId('P00000000003'));
@@ -208,15 +208,19 @@ test('verification wording never derives a date from the device clock', () => {
   assert.match(textOf(p.renderProject('P00000000004')), /Could not verify in our reading dated 26 Sep 2026/);
 });
 
-// Review finding: "Last verified" must consider every field, not fields[0].
-test('compare: Last verified is the latest reading across all fields, including conflict sides', () => {
+// Review finding: "Last verified" must consider all successfully verified fields,
+// while an unavailable check or a contradictory reading does not refresh it.
+test('compare: Last verified excludes later failed reads and conflict sides', () => {
   const { p } = boot({ shortlist: ['P00000000003', 'P00000000001'] });
-  assert.equal(p.latestReadAt(p.byId('P00000000003')), '2026-09-20');
-  assert.equal(p.latestReadAt(p.byId('P00000000002')), '2026-09-20', 'a later unavailable read still counts as the latest read attempt');
+  assert.equal(p.latestVerifiedAt(p.byId('P00000000003')), '2026-09-20');
+  assert.equal(p.latestVerifiedAt(p.byId('P00000000002')), '2026-06-15', 'a later unavailable read cannot refresh Last verified');
   const html = p.renderCompare();
   const row = textOf(html.match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]);
   assert.match(row, /Last verified 20 Sep 2026 \(6 days ago\) 20 Sep 2026 \(6 days ago\)/);
   assert.ok(!row.includes('Not checked yet'));
+  const failed = boot({ shortlist: ['P00000000002', 'P00000000001'] });
+  const failedRow = textOf(failed.p.renderCompare().match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]);
+  assert.match(failedRow, /Last verified 15 Jun 2026 \(103 days ago\) .*Older snapshot 20 Sep 2026 \(6 days ago\)/);
   // Stale readings carry the older badge from the same latest date.
   const stale = boot({ shortlist: ['P00000000001', 'P00000000002'], today: '2027-01-15' });
   assert.match(textOf(stale.p.renderCompare().match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]), /Older snapshot/);
@@ -231,12 +235,34 @@ test('a record with an empty field list renders an explicit Not checked yet head
   const p = createPrototype(copy, { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }, () => new Date('2026-09-26T09:00:00Z'));
   const card = p.renderSearch('Sample Empty');
   assert.match(textOf(card), /Sample Empty Record P00000000005 .*Not checked yet/);
-  assert.equal(p.latestReadAt(p.byId('P00000000005')), null);
+  assert.equal(p.latestVerifiedAt(p.byId('P00000000005')), null);
   const cells = [...p.renderCompare().matchAll(/<td data-col="Sample Empty Record">([^]*?)<\/td>/g)].map(x => textOf(x[1]).trim());
   assert.equal(cells.length, 7);
   assert.ok(cells.every(c => c === 'Not checked yet' || c === 'Sample Builders Pvt Ltd'), JSON.stringify(cells));
   assert.doesNotThrow(() => p.renderProject('P00000000005'));
   assert.doesNotThrow(() => p.renderChanges());
+});
+
+test('compare: a project with only failed readings has no verified reading', () => {
+  const copy = structuredClone(data);
+  copy.projects[0].fields = [{ key: 'litigation', label: 'Litigation', status: 'unavailable', retrievedAt: '2026-09-20' }];
+  const m = new Map([['rera05-synthetic-shortlist-v1', JSON.stringify(['P00000000001', 'P00000000002'])]]);
+  const p = createPrototype(copy, { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }, () => new Date('2026-09-26T09:00:00Z'));
+  assert.equal(p.latestVerifiedAt(p.byId('P00000000001')), null);
+  const row = textOf(p.renderCompare().match(/<tr><th scope="row"[^>]*>Last verified[^]*?<\/tr>/)[0]);
+  assert.match(row, /Last verified No verified reading yet 15 Jun 2026/);
+});
+
+test('return-later: a changed verified value without before evidence never claims no change', () => {
+  const copy = structuredClone(data);
+  const status = copy.projects[0].fields.find(f => f.key === 'registrationStatus');
+  status.value = 'Withdrawn';
+  delete status.change;
+  const m = new Map([['rera05-synthetic-last-visit-v1', JSON.stringify({ date: '2026-09-01', illustrative: true })]]);
+  const p = createPrototype(copy, { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }, () => new Date('2026-09-26T09:00:00Z'));
+  const chip = textOf(p.shortlistChip(p.byId('P00000000001')));
+  assert.match(chip, /earlier value not available for comparison: Registration status/);
+  assert.ok(!chip.includes('no change detected'));
 });
 
 test('return-later: a real visit is recorded from the clock, and a later visit finds nothing re-checked', () => {

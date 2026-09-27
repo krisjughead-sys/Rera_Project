@@ -22,7 +22,7 @@ Record: date, viewport, browser, commit, and the row results in the PR body.
 
 - [ ] Open Compare. Column headers show both IDs; because the names share a prefix, promoter and locality also appear in the headers.
 - [ ] Phase 2's "Revised proposed completion" cell reads "Could not verify on 20 Sep 2026" as a full sentence. There is no dash, blank or "N/A" anywhere in the table.
-- [ ] Phase 2's "Last verified" cell shows "N days ago" with N at least 103 (ages use the device clock against readings dated 26 Sep 2026) and the words "Older snapshot" with a glyph.
+- [ ] Phase 2's "Last verified" cell shows "N days ago" with N at least 103 (ages use the device clock against Phase 2’s last successful verification on 15 Jun 2026, not its failed reads on 20 Sep 2026) and the words "Older snapshot" with a glyph.
 - [ ] No cell shows a score, rank, "better", "delayed", "on time" or "overdue".
 - [ ] At 360 px, no horizontal scrollbar; cells are stacked.
 - [ ] No "Sponsored" block exists on this screen.
@@ -55,9 +55,9 @@ Record: date, viewport, browser, commit, and the row results in the PR body.
 ## 6. Return later
 
 - [ ] Open Changes for the first time. The hint reads "First visit: recorded now." Reload and open the shortlist: each card shows "Not re-checked since your last visit on <today>: <all field names>" and no "Changed" chip, because every synthetic reading predates today.
-- [ ] On Changes, press "Pretend my last visit was 01 Sep 2026". The shortlist chip on Phase 1 reads "Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion", plus a "Re-checked ... no change detected: Registration status, Proposed completion (as registered)" chip, a "Could not verify on the later check ...: Litigation, Location on map" chip and a "Not re-checked ...: Extension of registration" chip. No chip says "No change detected" for the project as a whole, and no field marked "Could not verify" ever appears under "no change detected".
+- [ ] On Changes, press "Pretend my last visit was 01 Sep 2026". The shortlist chip on Phase 1 reads "Changed since your illustrative last visit on 01 Sep 2026: Revised proposed completion", plus a "Verified on a later check ... earlier value not available for comparison: Registration status, Proposed completion (as registered)" chip, a "Could not verify on the later check ...: Litigation, Location on map" chip and a "Not re-checked ...: Extension of registration" chip. No chip asserts "no change detected" without a comparable before value, even if the current reading is verified.
 - [ ] Change the device date to a year in the future and open the search for "stale link". The mismatch card still says "Could not verify in our reading dated 26 Sep 2026"; the device date never appears in any verification sentence.
-- [ ] Add "Sample Heights" (P00000000003) and Phase 1 to the shortlist and open Compare. The "Last verified" row shows "20 Sep 2026 (N days ago)" for both, not "Not checked yet", even though the first row of P00000000003 is a contradiction.
+- [ ] Add "Sample Heights" (P00000000003) and Phase 1 to the shortlist and open Compare. The "Last verified" row shows "20 Sep 2026 (N days ago)" for both, not "Not checked yet", even though the first row of P00000000003 is a contradiction. Compare Phase 2 as well: its "Last verified" remains 15 Jun 2026, with an "Older snapshot" badge, despite later unavailable readings on 20 Sep.
 - [ ] Remove Phase 2 and reload. It stays removed. Add an ID that does not resolve (P00000000009) and reload. It remains in the list with "Record not found in our reading" and a Remove button.
 
 ## 7. Accessibility spot checks

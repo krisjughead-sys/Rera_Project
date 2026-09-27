@@ -20,10 +20,10 @@
     // device clock: a "could not verify on D" sentence must name a day on which
     // a read was actually attempted.
     const readingDate = () => fmtDate(DATA.generatedAt);
-    // Latest retrieval date across every field of a record, including the
-    // sides of a conflict. Null when nothing has been read.
+    // A read attempt that returned unavailable or conflict is not a successful
+    // verification. Keep that date separate from a record's Last verified row.
     const fieldReadAt = f => f.status === 'conflict' ? (f.values || []).map(v => v.retrievedAt).filter(Boolean).sort().pop() || null : (f.retrievedAt || null);
-    const latestReadAt = p => p.fields.map(fieldReadAt).filter(Boolean).sort().pop() || null;
+    const latestVerifiedAt = p => p.fields.filter(f => f.status === 'verified').map(f => f.retrievedAt).filter(Boolean).sort().pop() || null;
 
     // Data/view boundary: a record whose page carried a different registration
     // number than requested is a mismatch. Its fields are dropped here, so no
@@ -103,9 +103,9 @@
       if (!lv || p.mismatch) return null;
       const later = f => { const r = fieldReadAt(f); return !!(r && r > lv.date); };
       const changed = p.fields.filter(f => f.change && f.change.afterRetrievedAt > lv.date).map(f => f.label);
-      // "No change detected" is only ever said about a field whose later
-      // reading was itself verified. A later reading that came back
-      // unavailable, unknown or contradictory proves nothing about change.
+      // A later verified reading does not establish that the value stayed the
+      // same: this snapshot has no before value for fields without a change
+      // event. Describe the verification, not an inferred absence of change.
       const checked = p.fields.filter(f => later(f) && f.status === 'verified' && !changed.includes(f.label)).map(f => f.label);
       const couldNotVerify = p.fields.filter(f => later(f) && f.status !== 'verified' && !changed.includes(f.label)).map(f => f.label);
       const notChecked = p.fields.filter(f => !later(f)).map(f => f.label);
@@ -117,7 +117,7 @@
       const since = `since your ${v.lv.illustrative ? 'illustrative ' : ''}last visit on ${fmtDate(v.lv.date)}`;
       const parts = [];
       if (v.changed.length) parts.push(`Changed ${since}: ${v.changed.join(', ')}`);
-      if (v.checked.length) parts.push(`Re-checked ${since}, no change detected: ${v.checked.join(', ')}`);
+      if (v.checked.length) parts.push(`Verified on a later check ${since}; earlier value not available for comparison: ${v.checked.join(', ')}`);
       if (v.couldNotVerify.length) parts.push(`Could not verify on the later check ${since}: ${v.couldNotVerify.join(', ')}`);
       if (v.notChecked.length) parts.push(`Not re-checked ${since}: ${v.notChecked.join(', ')}`);
       return parts.map(t => `<span class="chip">${esc(t)}</span>`).join(' ');
@@ -190,7 +190,7 @@
       const cell = (p, key, kind) => {
         if (p.mismatch) return `${stateBadge('unavailable')}<br>${esc(mismatchText(p))}`;
         if (key === '__promoter') return esc(p.promoter);
-        if (key === '__lastVerified') { const r = latestReadAt(p); if (!r) return 'Not checked yet'; const older = daysSince(r) > DATA.freshnessWindowDays; return `${fmtDate(r)} (${daysSince(r)} days ago)${older ? '<br>' + stateBadge('older') : ''}`; }
+        if (key === '__lastVerified') { const r = latestVerifiedAt(p); if (!r) return p.fields.some(fieldReadAt) ? 'No verified reading yet' : 'Not checked yet'; const older = daysSince(r) > DATA.freshnessWindowDays; return `${fmtDate(r)} (${daysSince(r)} days ago)${older ? '<br>' + stateBadge('older') : ''}`; }
         return cellFor(p, key, kind);
       };
       return `<h1>Compare</h1><p class="hint">This compares official records as we read them. It does not rank projects.</p><table><thead><tr><th scope="col" data-col=""></th>${th(a)}${th(b)}</tr></thead><tbody>` +
@@ -217,7 +217,7 @@
       return html;
     }
 
-    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, shortlistChip, stateText, mismatchText, latestReadAt, headline, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
+    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, shortlistChip, stateText, mismatchText, latestVerifiedAt, headline, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
   }
 
   if (typeof module !== 'undefined' && module.exports) module.exports = { createPrototype };
