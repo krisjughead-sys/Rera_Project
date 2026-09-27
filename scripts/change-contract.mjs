@@ -14,6 +14,11 @@ const OFFICIAL_HOSTS = new Set(['maharera.maharashtra.gov.in', 'maharerait.mahao
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const DATE_FIELD_PATTERN = /(possession|completion)/i;
 const TIMESTAMP_PATTERN = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
+// A field key is canonical when it is a non-blank string with no whitespace
+// anywhere (so 'promoter' and 'promoter ' cannot become two fields) and only
+// contains letters, digits, '_', '.' or '-'. Identity is case-insensitive so a
+// case variant of an existing key lands in the same slot instead of a new one.
+const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 
 // documentDate stays a calendar date: the date printed on the official record.
 function isValidDate(value) {
@@ -48,6 +53,10 @@ function isOfficialSource(url) {
   }
 }
 
+export function isCanonicalFieldKey(fieldKey) {
+  return typeof fieldKey === 'string' && FIELD_KEY_PATTERN.test(fieldKey);
+}
+
 export function isDateField(fieldKey) {
   return typeof fieldKey === 'string' && DATE_FIELD_PATTERN.test(fieldKey);
 }
@@ -55,7 +64,8 @@ export function isDateField(fieldKey) {
 // A date field's identity includes its dateKind so original/revised/extended
 // values are separate slots that can never overwrite one another.
 export function fieldIdentity(fieldKey, dateKind) {
-  return isDateField(fieldKey) ? `${fieldKey}:${dateKind}` : fieldKey;
+  const key = typeof fieldKey === 'string' ? fieldKey.toLowerCase() : fieldKey;
+  return isDateField(fieldKey) ? `${key}:${dateKind}` : key;
 }
 
 // Validates a single change event on its own terms (no snapshot required).
@@ -69,6 +79,7 @@ export function validateChangeEvent(event) {
   if (event.schemaVersion !== SCHEMA_VERSION) issues.push('change event: unsupported schemaVersion');
   if (typeof event.reraId !== 'string' || !RERA_ID_PATTERN.test(event.reraId)) issues.push('change event: invalid MahaRERA project ID');
   if (typeof event.fieldKey !== 'string' || !event.fieldKey.trim()) issues.push('change event: missing fieldKey');
+  else if (!isCanonicalFieldKey(event.fieldKey)) issues.push('change event: fieldKey must be canonical (no whitespace; letters, digits, _ . - only)');
 
   const dateField = isDateField(event.fieldKey);
   if (dateField && !DATE_KINDS.includes(event.dateKind)) issues.push('change event: date field requires an original/revised/extended dateKind');
@@ -101,6 +112,9 @@ function validateFieldEntries(fields, parentReraId) {
   for (const [fieldIndex, field] of fields.entries()) {
     const label = `field ${fieldIndex + 1}`;
     if (!field || typeof field !== 'object' || Array.isArray(field)) { issues.push(`${label}: expected object`); continue; }
+
+    if (typeof field.key !== 'string' || !field.key.trim()) issues.push(`${label}: missing key`);
+    else if (!isCanonicalFieldKey(field.key)) issues.push(`${label}: key must be canonical (no whitespace; letters, digits, _ . - only)`);
 
     const dateField = isDateField(field.key);
     if (dateField && !DATE_KINDS.includes(field.dateKind)) issues.push(`${label}: date field requires an original/revised/extended dateKind`);
@@ -182,6 +196,18 @@ export function applyChangeEvent(snapshot, event) {
   const index = fields.findIndex(field => fieldIdentity(field.key, field.dateKind) === identity);
   const existing = index === -1 ? null : fields[index];
 
+  // Out-of-order or replayed collection: an event retrieved earlier than the
+  // reading already stored for this slot can never move the record, so
+  // provenance (documentDate, retrievedAt, hash) cannot roll backwards.
+  if (existing && isValidTimestamp(existing.retrievedAt) && isValidTimestamp(event.retrievedAt) &&
+      Date.parse(event.retrievedAt) < Date.parse(existing.retrievedAt)) {
+    return {
+      snapshot: { schemaVersion: SCHEMA_VERSION, reraId, fields, conflicts },
+      applied: false,
+      reason: 'stale-event-older-than-stored-reading',
+    };
+  }
+
   if (existing && existing.status === 'verified') {
     if (event.status !== 'verified') {
       return {
@@ -192,7 +218,7 @@ export function applyChangeEvent(snapshot, event) {
     }
     if (event.value !== existing.value) {
       const conflictRecord = {
-        fieldKey: event.fieldKey,
+        fieldKey: existing.key,
         dateKind: event.dateKind ?? null,
         existingValue: existing.value,
         incomingValue: event.value,
@@ -200,8 +226,11 @@ export function applyChangeEvent(snapshot, event) {
         incomingDocumentDate: event.documentDate,
         detectedAt: event.retrievedAt,
       };
+      // A replayed contradiction (same incoming evidence) is recorded once.
+      const duplicate = conflicts.some(c => ['fieldKey', 'dateKind', 'existingValue', 'incomingValue', 'incomingSourceUrl', 'incomingDocumentDate', 'detectedAt']
+        .every(k => c[k] === conflictRecord[k]));
       return {
-        snapshot: { schemaVersion: SCHEMA_VERSION, reraId, fields, conflicts: [...conflicts, conflictRecord] },
+        snapshot: { schemaVersion: SCHEMA_VERSION, reraId, fields, conflicts: duplicate ? conflicts : [...conflicts, conflictRecord] },
         applied: false,
         reason: 'contradictory-verified-value',
       };
@@ -209,7 +238,8 @@ export function applyChangeEvent(snapshot, event) {
   }
 
   const nextField = {
-    key: event.fieldKey,
+    // Keep the stored spelling of an existing slot's key.
+    key: existing ? existing.key : event.fieldKey,
     dateKind: event.dateKind ?? null,
     status: event.status,
     value: event.status === 'verified' ? event.value : null,

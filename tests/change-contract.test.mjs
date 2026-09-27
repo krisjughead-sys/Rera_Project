@@ -226,3 +226,108 @@ test('a verified change requires an independently extracted source-page project 
   assert.equal(accepted.applied, true);
   assert.equal(accepted.snapshot.fields[0].sourcePageReraId, RERA_ID);
 });
+
+// Review comment 5853602215 on 7530eac, finding 1 (and the open Codex finding):
+// a persisted field with no usable key must not be publishable.
+test('null, blank and non-canonical field keys are rejected on persisted fields and change events', () => {
+  const snapshotWith = (key) => ({
+    schemaVersion: 1,
+    reraId: RERA_ID,
+    conflicts: [],
+    fields: [{ key, dateKind: null, status: 'verified', value: 'Synthetic Promoter Pvt Ltd', sourceUrl: OFFICIAL_URL, documentDate: '2026-01-02', retrievedAt: '2026-09-01T09:00:00Z', snapshotHash: 'a'.repeat(64), sourcePageReraId: RERA_ID }],
+  });
+  for (const key of [null, undefined, '', '   ', '\t']) {
+    const issues = validateSnapshotBatch([snapshotWith(key)]);
+    assert.ok(issues.some(issue => issue.includes('missing key')), `key ${JSON.stringify(key)} accepted: ${issues}`);
+  }
+  for (const key of ['promoter ', ' promoter', 'promoter name', 'promoter\nname', '1promoter', 'promoter!']) {
+    assert.ok(validateSnapshotBatch([snapshotWith(key)]).some(issue => issue.includes('canonical')), `non-canonical key ${JSON.stringify(key)} accepted`);
+    assert.ok(validateChangeEvent(verifiedEvent({ fieldKey: key, dateKind: undefined })).some(issue => issue.includes('canonical')), `non-canonical fieldKey ${JSON.stringify(key)} accepted on a change event`);
+  }
+  // Canonical spellings still pass.
+  for (const key of ['promoterName', 'promoter_name', 'promoter.name', 'promoter-name']) {
+    assert.equal(validateSnapshotBatch([snapshotWith(key)]).length, 0, `canonical key ${key} rejected`);
+  }
+});
+
+// Finding 3: a spelling variant of an existing key must not open a second slot.
+test('a whitespace or case variant of an existing key cannot create a second field slot', () => {
+  const first = applyChangeEvent(null, verifiedEvent({ fieldKey: 'promoterName', dateKind: undefined, value: 'Synthetic Promoter Pvt Ltd' }));
+  assert.equal(first.applied, true);
+
+  const padded = applyChangeEvent(first.snapshot, verifiedEvent({ fieldKey: 'promoterName ', dateKind: undefined, value: 'Other Promoter', retrievedAt: '2026-09-02T09:00:00Z', snapshotHash: 'b'.repeat(64) }));
+  assert.equal(padded.applied, false);
+  assert.equal(padded.reason, 'invalid-event');
+  assert.equal(padded.snapshot.fields.length, 1);
+
+  // Same slot, different case, contradictory value: recorded as a conflict on the one slot, never a second field.
+  const cased = applyChangeEvent(first.snapshot, verifiedEvent({ fieldKey: 'PromoterName', dateKind: undefined, value: 'Other Promoter', retrievedAt: '2026-09-02T09:00:00Z', snapshotHash: 'b'.repeat(64) }));
+  assert.equal(cased.applied, false);
+  assert.equal(cased.reason, 'contradictory-verified-value');
+  assert.equal(cased.snapshot.fields.length, 1);
+  assert.equal(cased.snapshot.fields[0].key, 'promoterName', 'the stored spelling is kept');
+  assert.equal(cased.snapshot.conflicts.length, 1);
+
+  // Date slots behave the same: 'PossessionDate' original is the same slot as 'possessionDate' original.
+  const dated = applyChangeEvent(null, verifiedEvent());
+  const casedDate = applyChangeEvent(dated.snapshot, verifiedEvent({ fieldKey: 'PossessionDate', value: '2028-12-31', retrievedAt: '2026-09-02T09:00:00Z', snapshotHash: 'b'.repeat(64) }));
+  assert.equal(casedDate.applied, false);
+  assert.equal(casedDate.reason, 'contradictory-verified-value');
+  assert.equal(casedDate.snapshot.fields.length, 1);
+});
+
+// Finding 2: an event retrieved earlier than the stored reading cannot move provenance backwards.
+test('an out-of-order older event is rejected and leaves verified provenance untouched', () => {
+  const current = applyChangeEvent(null, verifiedEvent({ documentDate: '2026-04-02', retrievedAt: '2026-09-01T09:00:00Z' }));
+  const before = structuredClone(current.snapshot);
+
+  // Same value, older evidence.
+  const olderSame = applyChangeEvent(current.snapshot, verifiedEvent({ documentDate: '2026-01-02', retrievedAt: '2026-03-01T09:00:00Z', snapshotHash: 'c'.repeat(64) }));
+  assert.equal(olderSame.applied, false);
+  assert.equal(olderSame.reason, 'stale-event-older-than-stored-reading');
+  assert.deepEqual(olderSame.snapshot, before, 'provenance must not roll back');
+
+  // Different value, older evidence: still rejected, and not logged as a conflict either.
+  const olderDifferent = applyChangeEvent(current.snapshot, verifiedEvent({ value: '2028-12-31', documentDate: '2026-01-02', retrievedAt: '2026-03-01T09:00:00Z', snapshotHash: 'c'.repeat(64) }));
+  assert.equal(olderDifferent.applied, false);
+  assert.equal(olderDifferent.reason, 'stale-event-older-than-stored-reading');
+  assert.deepEqual(olderDifferent.snapshot, before);
+
+  // Offsets are compared as instants, not as strings: 10:00+05:30 is 04:30Z, earlier than 09:00Z.
+  const olderByOffset = applyChangeEvent(current.snapshot, verifiedEvent({ retrievedAt: '2026-09-01T10:00:00+05:30', snapshotHash: 'c'.repeat(64) }));
+  assert.equal(olderByOffset.applied, false);
+  assert.equal(olderByOffset.reason, 'stale-event-older-than-stored-reading');
+
+  // A newer reading still applies, with newer provenance.
+  const newer = applyChangeEvent(current.snapshot, verifiedEvent({ documentDate: '2026-07-02', retrievedAt: '2026-09-15T09:00:00Z', snapshotHash: 'd'.repeat(64) }));
+  assert.equal(newer.applied, true);
+  assert.equal(newer.snapshot.fields[0].retrievedAt, '2026-09-15T09:00:00Z');
+  assert.equal(newer.snapshot.fields[0].documentDate, '2026-07-02');
+
+  // An older unavailable read after a newer unavailable read is also rejected (order matters for every status).
+  const unavailableNew = applyChangeEvent(null, { schemaVersion: 1, reraId: RERA_ID, fieldKey: 'litigation', status: 'unavailable', retrievedAt: '2026-09-10T09:00:00Z' });
+  const unavailableOld = applyChangeEvent(unavailableNew.snapshot, { schemaVersion: 1, reraId: RERA_ID, fieldKey: 'litigation', status: 'unavailable', retrievedAt: '2026-09-05T09:00:00Z' });
+  assert.equal(unavailableOld.applied, false);
+  assert.equal(unavailableOld.snapshot.fields[0].retrievedAt, '2026-09-10T09:00:00Z');
+});
+
+// Finding 2 (replay): re-delivering the same event is idempotent and does not duplicate conflicts.
+test('replaying an identical event is idempotent, and a replayed contradiction is recorded once', () => {
+  const first = applyChangeEvent(null, verifiedEvent());
+  const replay = applyChangeEvent(first.snapshot, verifiedEvent());
+  assert.equal(replay.applied, true);
+  assert.deepEqual(replay.snapshot, first.snapshot);
+
+  const contradiction = verifiedEvent({ value: '2028-12-31', documentDate: '2026-04-02', retrievedAt: '2026-09-02T09:00:00Z', snapshotHash: 'b'.repeat(64) });
+  const c1 = applyChangeEvent(first.snapshot, contradiction);
+  const c2 = applyChangeEvent(c1.snapshot, contradiction);
+  const c3 = applyChangeEvent(c2.snapshot, contradiction);
+  assert.equal(c1.reason, 'contradictory-verified-value');
+  assert.equal(c3.reason, 'contradictory-verified-value');
+  assert.equal(c3.snapshot.conflicts.length, 1, 'the same contradiction must not accumulate');
+  assert.equal(c3.snapshot.fields[0].value, '2027-12-31', 'the verified value is untouched');
+
+  // A genuinely new contradiction (later retrieval) is a second conflict record.
+  const c4 = applyChangeEvent(c3.snapshot, verifiedEvent({ value: '2029-12-31', documentDate: '2026-05-02', retrievedAt: '2026-09-03T09:00:00Z', snapshotHash: 'e'.repeat(64) }));
+  assert.equal(c4.snapshot.conflicts.length, 2);
+});
