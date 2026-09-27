@@ -1,0 +1,106 @@
+{
+  "issues": [
+    {
+      "number": 101,
+      "title": "Synthetic completed task",
+      "url": "https://github.com/example/test/issues/101",
+      "state": "closed",
+      "updatedAt": "2026-01-02T11:00:00Z",
+      "labels": [],
+      "stateReason": "completed"
+    },
+    {
+      "number": 102,
+      "title": "Synthetic active task",
+      "url": "https://github.com/example/test/issues/102",
+      "state": "open",
+      "updatedAt": "2026-01-02T11:00:00Z",
+      "labels": [
+        "agent-working"
+      ]
+    },
+    {
+      "number": 103,
+      "title": "Synthetic QA failure",
+      "url": "https://github.com/example/test/issues/103",
+      "state": "open",
+      "updatedAt": "2026-01-02T11:00:00Z",
+      "labels": [
+        "qa-failed"
+      ]
+    },
+    {
+      "number": 104,
+      "title": "Synthetic owner decision",
+      "url": "https://github.com/example/test/issues/104",
+      "state": "open",
+      "updatedAt": "2026-01-02T11:00:00Z",
+      "labels": [
+        "needs-owner"
+      ]
+    },
+    {
+      "number": 105,
+      "title": "Synthetic queued task",
+      "url": "https://github.com/example/test/issues/105",
+      "state": "open",
+      "updatedAt": "2026-01-01T11:59:59Z",
+      "labels": [
+        "agent-ready"
+      ]
+    },
+    {
+      "number": 106,
+      "title": "Synthetic rejected task",
+      "url": "https://github.com/example/test/issues/106",
+      "state": "closed",
+      "stateReason": "not_planned",
+      "updatedAt": "2026-01-02T11:00:00Z",
+      "labels": []
+    }
+  ],
+  "pullRequests": [
+    {
+      "number": 202,
+      "issueNumber": 102,
+      "url": "https://github.com/example/test/pull/202",
+      "draft": true,
+      "author": "builder",
+      "ci": {
+        "conclusion": "success"
+      },
+      "reviews": [
+        {
+          "author": "reviewer",
+          "state": "APPROVED",
+          "commitId": "synthetic-current-head"
+        }
+      ],
+      "headSha": "synthetic-current-head"
+    },
+    {
+      "number": 203,
+      "issueNumber": 103,
+      "url": "https://github.com/example/test/pull/203",
+      "draft": true,
+      "author": "builder",
+      "ci": {
+        "conclusion": "failure"
+      },
+      "reviews": []
+    },
+    {
+      "number": 204,
+      "issueNumber": 104,
+      "url": "https://github.com/example/test/pull/204",
+      "draft": true,
+      "author": "builder",
+      "reviews": [
+        {
+          "author": "builder",
+          "state": "APPROVED"
+        }
+      ]
+    }
+  ]
+}
