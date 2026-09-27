@@ -47,6 +47,11 @@ dl{margin:0}
 .bar{position:fixed;left:0;right:0;bottom:0;height:56px;background:#fff;border-top:1px solid var(--line);display:flex;gap:8px;padding:6px 16px;align-items:center;justify-content:space-between}
 .bar .btn{flex:1}
 .chip{display:inline-block;font-size:.875rem;padding:2px 8px;border-radius:999px;background:#eef2f5;margin-top:6px}
+.mismatch{border-color:#9aa8b3;background:#f7f7f7}
+.id.inline{display:inline}
+.printed{display:inline}.printed summary{display:inline;min-height:0;font-size:.875rem;color:var(--muted)}
+.explain.compact{margin:10px 0 0}
+.qa{margin-top:24px;padding:12px;border:1px dashed #9aa8b3;border-radius:8px;font-size:.9375rem}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;vertical-align:top;padding:8px 4px;border-top:1px solid var(--line)}
 th .id{white-space:normal}
@@ -56,7 +61,7 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 </style>
 </head>
 <body>
-<div class="ribbon" role="note">Synthetic data. Unshipped prototype for RERA-05. No real project facts.</div>
+<div class="ribbon" role="note">Synthetic data. Unshipped prototype for RERA-05. No real project facts. Readings are dated 26 Sep 2026; ages use your device clock.</div>
 <header><strong>Maharashtra Project Monitor</strong><span class="meta" style="color:#aad5e9">pilot prototype</span></header>
 <main id="app" aria-live="polite"></main>
 <nav class="bar" aria-label="Main">
@@ -120,175 +125,30 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
   ]
 }
 </script>
+<script src="core.js"></script>
 <script>
 (() => {
 const DATA = JSON.parse(document.getElementById('synthetic-data').textContent);
-const TODAY = new Date(DATA.generatedAt + 'T00:00:00Z');
-const KEY = 'rera05-synthetic-shortlist-v1', VISIT = 'rera05-synthetic-last-visit-v1';
+const store = { get: k => localStorage.getItem(k), set: (k, v) => localStorage.setItem(k, v) };
+const proto = Rera05.createPrototype(DATA, store, () => new Date());
 const app = document.getElementById('app');
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmtDate = iso => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d} ${MONTHS[+m-1]} ${y}`; };
-const daysSince = iso => Math.round((TODAY - new Date(iso + 'T00:00:00Z')) / 86400000);
-const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
-const read = () => { try { const a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a.filter(x => /^P0000\d{7}$/.test(x)).slice(0, 30) : []; } catch { return []; } };
-const write = list => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 30))); } catch {} };
-const lastVisit = () => { try { return localStorage.getItem(VISIT); } catch { return null; } };
-const byId = id => DATA.projects.find(p => p.reraId === id);
-
-// Effective state: verified values older than the freshness window become "older".
-function effState(f) {
-  if (f.status === 'verified' && daysSince(f.retrievedAt) > DATA.freshnessWindowDays) return 'older';
-  return f.status;
-}
-const GLYPH = { verified:'✓', older:'⚠', unavailable:'?', unknown:'·', conflict:'⚠' };
-const LABEL = { verified:'Official record', older:'Older snapshot', unavailable:'Could not verify', unknown:'Not checked yet', conflict:'Official sources disagree' };
-
-function stateBadge(s) { return `<span class="state ${s}"><span aria-hidden="true">${GLYPH[s]}</span> ${LABEL[s]}</span>`; }
-
-// The one function that turns a non-verified field into buyer-facing words. No dashes, no blanks.
-function stateText(f) {
-  const s = effState(f);
-  if (s === 'unavailable') {
-    const base = `Could not verify on ${fmtDate(f.retrievedAt)}.`;
-    if (f.key === 'litigation') return `${base} This does not mean there is no case.`;
-    if (f.dateKind === 'revised') return `${base} This does not mean there is no revision.`;
-    if (f.dateKind === 'extended') return `${base} This does not mean no extension exists.`;
-    return `${base} This does not mean the field is empty.`;
-  }
-  if (s === 'unknown') return 'Not checked yet';
-  return '';
-}
-
-function valueHtml(f) {
-  const v = isDate(f.value) ? `<time datetime="${f.value}">${fmtDate(f.value)}</time>` : esc(f.value);
-  const printed = f.printed && f.printed !== f.value ? ` <details style="display:inline"><summary style="display:inline;min-height:0;font-size:.875rem;color:var(--muted)">as printed</summary><span class="id">${esc(f.printed)}</span></details>` : '';
-  return `<span class="value">${v}</span>${printed}`;
-}
-
-function provHtml(f) {
-  return `<div class="prov">Document dated ${fmtDate(f.documentDate)} · Last verified ${fmtDate(f.retrievedAt)} (${daysSince(f.retrievedAt)} days ago) · <a href="${esc(f.sourceUrl)}" rel="noopener">View ›</a></div>`;
-}
-
-function fieldRow(f) {
-  const s = effState(f);
-  let body;
-  if (s === 'verified' || s === 'older') {
-    body = `${valueHtml(f)} ${stateBadge(s)}${provHtml(f)}` +
-      (s === 'older' ? `<div class="prov">Last verified ${daysSince(f.retrievedAt)} days ago. Re-check on the official site before deciding.</div>` : '') +
-      (f.change ? `<div class="change">Changed: this row was added on our read of ${fmtDate(f.change.afterRetrievedAt)} (was: ${f.change.before ? fmtDate(f.change.before) : 'not present'} on ${fmtDate(f.change.beforeRetrievedAt)})</div>` : '');
-  } else if (s === 'conflict') {
-    body = `${stateBadge(s)}` + f.values.map(v => `<div><span class="value">${isDate(v.value) ? fmtDate(v.value) : esc(v.value)}</span> <span class="meta">(${esc(v.sourceLabel)}, document dated ${fmtDate(v.documentDate)}, <a href="${esc(v.sourceUrl)}" rel="noopener">View ›</a>)</span></div>`).join('') +
-      `<div class="prov">Neither is shown as current. Confirm on MahaRERA.</div>`;
-  } else {
-    body = `${stateBadge(s)}<div class="prov">${esc(stateText(f))}</div>`;
-  }
-  return `<div class="field"><dt>${esc(f.label)}</dt><dd>${body}</dd></div>`;
-}
-
-function shortlistChip(p) {
-  const lv = lastVisit();
-  if (!lv) return '';
-  const changed = p.fields.some(f => f.change && f.change.afterRetrievedAt > lv);
-  if (changed) return `<span class="chip">Changed since your last visit on ${fmtDate(lv)}</span>`;
-  const reverified = p.fields.some(f => f.retrievedAt && f.retrievedAt > lv);
-  return reverified ? `<span class="chip">No change detected since ${fmtDate(lv)}</span>` : `<span class="chip">Could not re-check since ${fmtDate(lv)}</span>`;
-}
-
-function projectCard(p, inList) {
-  return `<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div class="meta">${esc(p.locality)}</div><div class="meta">${esc(p.promoter)}</div>
-    <div>${stateBadge(effState(p.fields[0]))}${p.fields[0].status === 'verified' ? ': ' + esc(p.fields[0].value) : ''}</div>
-    ${shortlistChip(p)}
-    <div class="row-actions"><button class="btn secondary" data-toggle="${esc(p.reraId)}">${inList ? 'Remove from shortlist' : 'Add to shortlist'}</button><a class="btn" href="#project/${esc(p.reraId)}">Open</a></div></article>`;
-}
-
-function renderSearch(q) {
-  const list = read();
-  const query = (q || '').trim().toLowerCase();
-  const results = query ? DATA.projects.filter(p => p.reraId !== 'P00000000004' && (p.name.toLowerCase().includes(query) || p.reraId.toLowerCase() === query)) : [];
-  let html = `<h1>Find a project</h1><form class="search" id="f"><input type="search" id="q" aria-label="Project name or MahaRERA registration number" value="${esc(q || '')}" placeholder="Name or MahaRERA number"><button class="btn" type="submit">Search</button></form>
-    <p class="hint">Results are matched on the registration number, not the name. Two phases of one township have different numbers.</p>`;
-  if (query && !results.length) html += `<div class="card"><p>No official record matched. Try the registration number from your allotment letter or the official MahaRERA search.</p><a class="btn secondary" href="https://maharera.maharashtra.gov.in/projects-search-result" rel="noopener noreferrer" target="_blank">Open official search ↗</a></div>`;
-  html += results.map(p => projectCard(p, list.includes(p.reraId))).join('');
-  html += `<h2>Your shortlist</h2>`;
-  if (!list.length) html += `<p class="hint">Your shortlist is empty. It is saved in this browser only.</p>`;
-  html += list.map(id => { const p = byId(id); return p ? projectCard(p, true) : `<article class="card"><span class="id">${esc(id)}</span><p>Record not found in our reading on ${fmtDate(DATA.generatedAt)}. Check MahaRERA.</p><button class="btn secondary" data-toggle="${esc(id)}">Remove</button></article>`; }).join('');
-  if (results.length) html += `<hr class="rule"><aside class="ad" aria-label="Sponsored"><small>Sponsored</small>Placeholder for a labelled advertisement. It never sits inside a project card.</aside>`;
-  app.innerHTML = html;
-  document.getElementById('f').onsubmit = e => { e.preventDefault(); location.hash = '#search/' + encodeURIComponent(document.getElementById('q').value); };
-}
-
-function renderProject(id) {
-  const p = byId(id);
-  if (!p) { app.innerHTML = `<a href="#search">‹ Back</a><h1>Record not found</h1><span class="id">${esc(id)}</span><p>Record not found in our reading on ${fmtDate(DATA.generatedAt)}. Check MahaRERA. No similarly named project is shown in its place.</p>`; return; }
-  const head = `<a href="#search">‹ Back</a><h1>${esc(p.name)}</h1><span class="id">${esc(p.reraId)}</span><div class="meta">${esc(p.locality)}</div><div class="meta">${esc(p.promoter)}</div>`;
-  if (p.pageId !== p.reraId) {
-    app.innerHTML = head + `<section class="card record"><h2>Official record</h2>${stateBadge('unavailable')}<p>Could not verify on ${fmtDate(DATA.generatedAt)}: the page we read carried a different registration number (${esc(p.pageId)}) from the one requested (${esc(p.reraId)}). No fields are shown.</p></section>`;
-    return;
-  }
-  const list = read();
-  app.innerHTML = head +
-    `<section class="card record"><h2>Official record</h2><dl>${p.fields.map(fieldRow).join('')}</dl><div class="foot">Read from MahaRERA on ${fmtDate(DATA.generatedAt)}. Registration number verified on the page: <span class="id" style="display:inline">${esc(p.pageId)}</span></div></section>
-     <section class="explain"><h2>What this means</h2><p>A revised date on the register is the promoter's declaration to the authority. It is not the possession date in your agreement. Compare both, and treat any row marked "Could not verify" as unread, not as empty.</p></section>
-     <hr class="rule"><aside class="ad" aria-label="Sponsored"><small>Sponsored</small>Placeholder for a labelled advertisement. Dotted border, no state colours, outside the card.</aside>
-     <div class="row-actions"><button class="btn secondary" data-toggle="${esc(p.reraId)}">${list.includes(p.reraId) ? 'Remove from shortlist' : 'Add to shortlist'}</button><a class="btn" href="https://maharera.maharashtra.gov.in/projects-search-result" rel="noopener noreferrer" target="_blank">Open on MahaRERA ↗</a></div>`;
-}
-
-function cellFor(p, key, kind) {
-  const f = p.fields.find(x => x.key === key && (x.dateKind || null) === (kind || null));
-  if (!f) return 'Not checked yet';
-  const s = effState(f);
-  if (s === 'verified' || s === 'older') return `${isDate(f.value) ? fmtDate(f.value) : esc(f.value)}<br>${stateBadge(s)}`;
-  if (s === 'conflict') return `${stateBadge(s)}<br>${f.values.map(v => esc(v.value)).join(' / ')}`;
-  return esc(stateText(f));
-}
-
-function renderCompare() {
-  const ids = read().filter(byId).slice(0, 2);
-  if (ids.length < 2) { app.innerHTML = `<h1>Compare</h1><p>Add two projects to your shortlist to compare their records.</p>`; return; }
-  const [a, b] = ids.map(byId);
-  const sharePrefix = a.name.split(' ').slice(0, 2).join(' ') === b.name.split(' ').slice(0, 2).join(' ');
-  const th = p => `<th scope="col">${esc(p.name)}<br><span class="id">${esc(p.reraId)}</span>${sharePrefix ? `<br><span class="meta">${esc(p.promoter)}<br>${esc(p.locality)}</span>` : ''}</th>`;
-  const rows = [['Registration status','registrationStatus',null],['Promoter','__promoter',null],['Proposed completion (as registered)','completionDate','original'],['Revised proposed completion','completionDate','revised'],['Extension of registration','completionDate','extended'],['Last verified','__lastVerified',null],['Litigation','litigation',null]];
-  const cell = (p, key, kind) => {
-    if (key === '__promoter') return esc(p.promoter);
-    if (key === '__lastVerified') { const f = p.fields[0]; const s = effState(f); return f.retrievedAt ? `${daysSince(f.retrievedAt)} days ago${s === 'older' ? '<br>' + stateBadge('older') : ''}` : 'Not checked yet'; }
-    return cellFor(p, key, kind);
-  };
-  app.innerHTML = `<h1>Compare</h1><p class="hint">This compares official records as we read them. It does not rank projects.</p><table><thead><tr><th scope="col" data-col=""></th>${th(a)}${th(b)}</tr></thead><tbody>` +
-    rows.map(([label, key, kind]) => `<tr><th scope="row" data-col="">${esc(label)}</th><td data-col="${esc(a.name)}">${cell(a, key, kind)}</td><td data-col="${esc(b.name)}">${cell(b, key, kind)}</td></tr>`).join('') + `</tbody></table>`;
-}
-
-function renderChanges() {
-  const lv = lastVisit();
-  const list = read();
-  const cards = [];
-  for (const p of DATA.projects.filter(p => list.includes(p.reraId) || !list.length)) {
-    if (p.pageId !== p.reraId) continue;
-    for (const f of p.fields) {
-      if (f.change) cards.push(`<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div><div>Before: ${f.change.before ? fmtDate(f.change.before) : 'not present'} (read ${fmtDate(f.change.beforeRetrievedAt)})</div><div>After: ${fmtDate(f.change.after)} (read ${fmtDate(f.change.afterRetrievedAt)})</div><div class="prov">Document dated ${fmtDate(f.documentDate)} · <a href="${esc(f.sourceUrl)}" rel="noopener">View ›</a></div><div class="explain" style="margin:10px 0 0"><b>What this means:</b> the register now shows a revised date. Your agreement date may differ.</div></article>`);
-      if (f.status === 'conflict') cards.push(`<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div>${fieldRow(f)}</article>`);
-    }
-  }
-  app.innerHTML = `<h1>Changes on your shortlist</h1><p class="hint">${lv ? `Since your last visit on ${fmtDate(lv)}.` : 'First visit recorded now.'} Shown: ${list.length ? 'your shortlist' : 'all synthetic projects (shortlist empty)'}.</p>` + (cards.length ? cards.join('') : '<p>No change detected in our readings. This is not a statement that nothing changed on the official site.</p>');
-  try { localStorage.setItem(VISIT, DATA.generatedAt); } catch {}
-}
-
 function route() {
   const h = location.hash || '#search';
   const [, view, arg] = h.match(/^#([a-z]+)\/?(.*)$/) || [null, 'search', ''];
-  if (view === 'project') renderProject(decodeURIComponent(arg));
-  else if (view === 'compare') renderCompare();
-  else if (view === 'changes') renderChanges();
-  else renderSearch(decodeURIComponent(arg));
-  document.getElementById('nav-shortlist').textContent = `Shortlist (${read().length})`;
+  if (view === 'project') app.innerHTML = proto.renderProject(decodeURIComponent(arg));
+  else if (view === 'compare') app.innerHTML = proto.renderCompare();
+  else if (view === 'changes') app.innerHTML = proto.renderChanges();
+  else app.innerHTML = proto.renderSearch(decodeURIComponent(arg));
+  document.getElementById('nav-shortlist').textContent = `Shortlist (${proto.read().length})`;
+  const f = document.getElementById('f');
+  if (f) f.onsubmit = e => { e.preventDefault(); location.hash = '#search/' + encodeURIComponent(document.getElementById('q').value); };
   window.scrollTo(0, 0);
 }
 app.addEventListener('click', e => {
-  const b = e.target.closest('[data-toggle]'); if (!b) return;
-  const id = b.dataset.toggle; let list = read();
-  list = list.includes(id) ? list.filter(x => x !== id) : [id, ...list];
-  write(list); route();
+  const t = e.target.closest('[data-toggle]');
+  if (t) { proto.toggleShortlist(t.dataset.toggle); route(); return; }
+  const v = e.target.closest('[data-illustrative-visit]');
+  if (v) { proto.recordIllustrativeVisit(v.dataset.illustrativeVisit); location.hash = '#search'; route(); }
 });
 window.addEventListener('hashchange', route);
 route();

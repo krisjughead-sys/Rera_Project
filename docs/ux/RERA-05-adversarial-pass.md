@@ -20,6 +20,14 @@ Severity: **High** = a buyer could act on a false belief about a real project; *
 | F12 (Low) | On a 360 px screen the compare table scrolls horizontally and the second column is off-screen, so a buyer sees only Phase 1. | Two fixed columns. | Cells stack below 390 px. | Spec 3.3, 4; prototype CSS `@media (max-width: 389px)`. |
 | F13 (Low) | Colour-blind buyer cannot distinguish the amber "older snapshot" from the teal "verified". | Colour-only state. | Glyph plus text label on every state. | Spec 4; prototype `.state` markup. |
 
+## Independent review findings (Codex, PR #9 review on 9dcc6c6)
+
+| # | Finding | First-pass behaviour | Revision | Enforced in |
+|---|---|---|---|---|
+| F14 (High) | The page-ID mismatch guard lived only in the project view. Search and compare could still show the mismatched fixture's purported verified status and let the buyer shortlist it. | Guard in `renderProject` only; search filtered the fixture out by ID; test was a regex over source text. | Mismatch is resolved once at the data/view boundary (`RECORDS` in `core.js`): the record keeps name, ID, locality and promoter, loses all fields, and is flagged. Every view renders the same warning naming both numbers; `toggleShortlist` refuses to add it; a stale stored entry renders with Remove only; compare fills every cell of that column with the warning. | Spec 3.2; `core.js` `RECORDS`, `mismatchText`, `toggleShortlist`; behavioural tests `page-ID mismatch: *` (boundary, search, shortlist, compare, project and changes). |
+| F15 (High) | "No change detected since <visit>" was shown for the whole project if any one field had been re-read after the visit, and the stored visit was the fixed dataset date, so it could never represent a later real visit. | One chip per project; `DATA.generatedAt` written as the visit. | Per-field summary: three chips naming the changed, re-checked and not-re-checked fields; no whole-project sentence. The visit is recorded from the device clock when the Changes screen opens. A QA control sets an illustrative visit (01 Sep 2026) that is flagged in storage and labelled "illustrative last visit" on every chip. | Spec 3.5; `core.js` `visitSummary`, `shortlistChip`, `recordVisit`, `recordIllustrativeVisit`; tests `return-later: *`. |
+| F16 (Medium) | Search hint claimed results were "matched on the registration number, not the name" while the code matched name substrings, which is exactly the phase-collision trap the hint was meant to prevent. | Copy contradicted behaviour. | Copy now reads: "A name finds candidates. Only the exact registration number confirms which project you are looking at; two phases of one township have different numbers." Behaviour unchanged: name substring for discovery, exact ID for confirmation, shortlist keyed on ID. | Spec 3.1 A1; `core.js` `renderSearch`; test `search copy: *`. |
+
 ## Findings not fixed in this pass
 
 - **Real-portal label text is unconfirmed.** Row labels in the spec ("Proposed completion (as registered)", "Revised proposed completion", "Extension of registration") are buyer-facing paraphrases. The official label text must be read first-hand (RERA-02 section 9) before the first real record is shown; the label mapping should then be recorded next to the field definition.
@@ -28,4 +36,4 @@ Severity: **High** = a buyer could act on a false belief about a real project; *
 
 ## Method note
 
-One bounded design pass and one adversarial pass, as the issue budget allows. Screens were not regenerated; revisions were applied to the spec, the prototype and the test together so that a later change to one is caught by the other two.
+One bounded design pass and one adversarial pass, as the issue budget allows, followed by one revision commit for the independent review. Screens were not regenerated; revisions were applied to the spec, the prototype and the test together so that a later change to one is caught by the other two. The prototype logic now lives in `core.js` so the tests exercise the real render functions rather than the source text.

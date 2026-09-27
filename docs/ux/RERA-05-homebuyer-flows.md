@@ -47,8 +47,9 @@ Breakpoint priority: 360 px wide first, then 390, 768, 1024. Single column below
 │ ┌──────────────────────────────────┐ │
 │ │ Search by name or MahaRERA no.   │ │  ← input, 48 px tall, type=search, clear button
 │ └──────────────────────────────────┘ │
-│ Results are matched on the           │
-│ registration number, not the name.   │  ← permanent hint (A1)
+│ A name finds candidates. Only the    │
+│ exact registration number confirms   │
+│ which project you are looking at.    │  ← permanent hint (A1)
 │ ┌──────────────────────────────────┐ │
 │ │ Sample Heights Phase 1           │ │
 │ │ P00000000001 · Testpur, Sample D.│ │  ← ID always on the second line (A2)
@@ -68,7 +69,7 @@ Breakpoint priority: 360 px wide first, then 390, 768, 1024. Single column below
 ```
 
 Annotations:
-- **A1** A name search may return several registrations of one township and unrelated same-name projects elsewhere. The hint stays visible and results show ID, locality and promoter on every card so a buyer can tell phases apart before opening.
+- **A1** A name search is a discovery step: it matches name substrings and may return several registrations of one township and unrelated same-name projects elsewhere. Only the exact registration number confirms identity. The hint says exactly that, stays visible, and every card shows ID, locality and promoter so a buyer can tell phases apart before opening. Shortlist and compare key on the ID, never the name.
 - **A2** The registration number is never truncated on mobile. If the name is long, the name wraps; the ID does not.
 - Shortlist is browser-local, as in the current `dist/` pilot, capped at 30 entries, keyed by registration number and not by name.
 - Empty state: "No official record matched. Try the registration number from your allotment letter or the MahaRERA search." with a link to the official search. No suggestions are generated from similar names (adversarial finding F3).
@@ -116,7 +117,8 @@ Annotations:
 ```
 
 Annotations:
-- The official record card is one visual container with a heading "Official record" and a footer line "Read from MahaRERA on <retrievedAt>. Registration number verified on the page: P00000000001" (adversarial F2: page-ID match shown to the buyer).
+- The official record card is one visual container with a heading "Official record" and a footer line "Registration number verified on the page: P00000000001" (adversarial F2: page-ID match shown to the buyer).
+- **Page-ID mismatch is rejected at the data boundary, not per screen.** A record whose page carried a different registration number than requested has its fields dropped before any view runs. Search, project, compare and changes all show the same "Could not verify" warning naming both numbers, and the record cannot be added to the shortlist (a previously stored entry offers Remove only). Adversarial F14.
 - Each field row is a definition-list item: term, value, state, provenance. Provenance is collapsed by default on screens under 390 px behind a "Details" disclosure but the state label and "Last verified" date remain visible.
 - No field row may be empty. An unavailable field still renders its row with the mandatory wording, so the absence is visible rather than silent.
 - The card never shows a computed "on time / delayed / overdue" badge. The RERA-02 draft records that the quarterly-update rule has not been read first-hand; until an official rule is quoted, nothing is derived from silence.
@@ -193,7 +195,8 @@ Annotations:
 
 ### 3.5 Return later
 
-- Last visit is stored in the browser with the shortlist. On return, the shortlist screen shows a chip per project: "Changed", "No change detected since <date>" or "Could not re-check since <date>". The neutral wording "No change detected" is used instead of "No change", because we can only speak for what we read.
+- Last visit is stored in the browser with the shortlist, as the real date of the visit when the Changes screen was opened. On return, each shortlist card shows up to three chips, each listing field names: "Changed since your last visit on <date>: <fields>", "Re-checked since your last visit on <date>, no change detected: <fields>" and "Not re-checked since your last visit on <date>: <fields>". There is no whole-project "no change" sentence, because a re-read of one field says nothing about the others (adversarial F15).
+- For the synthetic prototype, a QA control on the Changes screen can set an illustrative last visit (01 Sep 2026). The stored visit is then flagged and every chip says "illustrative last visit", so a fixed dataset can demonstrate the changed-field chip without pretending to be a real visit.
 - A shortlist entry whose ID no longer resolves on our side shows "Record not found in our reading on R. Check MahaRERA." and is never silently removed.
 - Nothing about a buyer's shortlist leaves the device in this pilot. No notification channel is designed here; it would need an account, which is out of scope.
 
