@@ -18,19 +18,24 @@ export function renderQueueReport(snapshot, now = new Date()) {
   }
   if (Number.isNaN(new Date(now).getTime())) throw new Error('Invalid report time');
   const sections = { Done: [], 'In progress': [], Blocked: [], 'Owner decisions': [] };
+  const issueNumbers = new Set();
   for (const issue of snapshot.issues) {
     if (!Number.isInteger(issue.number) || !issue.title || !issue.url || !issue.state) {
       throw new Error('Each issue needs number, title, url and state');
     }
+    if (issueNumbers.has(issue.number)) throw new Error(`Duplicate issue #${issue.number}`);
+    issueNumbers.add(issue.number);
+    const state = String(issue.state).toLowerCase();
+    if (state !== 'open' && state !== 'closed') throw new Error(`Unknown issue state for #${issue.number}`);
     const labels = labelsOf(issue);
     const prs = snapshot.pullRequests.filter((pr) => pr.issueNumber === issue.number);
     const flags = [];
-    if (issue.state === 'open') {
+    if (state === 'open') {
       const updated = Date.parse(issue.updatedAt);
       if (!Number.isFinite(updated)) flags.push('last update unavailable');
       else if (new Date(now).getTime() - updated > 24 * 60 * 60 * 1000) flags.push('stale >24h');
       if (!prs.length) flags.push('no linked PR');
-    } else if (issue.state === 'closed' && issue.stateReason !== 'completed') {
+    } else if (state === 'closed' && issue.stateReason !== 'completed') {
       flags.push(issue.stateReason === 'not_planned' ? 'closed as not planned' : 'closure reason unavailable');
     }
     for (const pr of prs) {
@@ -49,12 +54,21 @@ export function renderQueueReport(snapshot, now = new Date()) {
     detail.push(`updated ${safe(issue.updatedAt)}`);
     if (flags.length) detail.push(flags.join('; '));
     const line = `- ${detail.join(' — ')}`;
-    const section = issue.state === 'closed' && issue.stateReason === 'completed' ? 'Done'
-      : issue.state === 'closed' ? 'Blocked'
+    const section = state === 'closed' && issue.stateReason === 'completed' ? 'Done'
+      : state === 'closed' ? 'Blocked'
       : labels.has('needs-owner') ? 'Owner decisions'
       : ['qa-failed', 'source-blocked', 'cost-paused'].some((label) => labels.has(label)) ? 'Blocked'
       : 'In progress';
     sections[section].push(line);
+  }
+  for (const pr of snapshot.pullRequests) {
+    if (issueNumbers.has(pr.issueNumber)) continue;
+    if (!Number.isInteger(pr.number) || !pr.url) throw new Error('Each unlinked PR needs number and url');
+    const flags = [Number.isInteger(pr.issueNumber) ? `issue #${pr.issueNumber} unavailable` : 'linked issue unavailable'];
+    if (!pr.ci?.conclusion) flags.push('CI unavailable');
+    else if (pr.ci.conclusion !== 'success') flags.push(`CI ${safe(pr.ci.conclusion)}`);
+    if (pr.draft && !pr.reviews?.length) flags.push('independent review unavailable');
+    sections.Blocked.push(`- ${link(`PR #${pr.number}`, pr.url)} — ${flags.join('; ')}`);
   }
   return Object.entries(sections).map(([heading, lines]) =>
     `## ${heading}\n\n${lines.length ? lines.join('\n') : 'None.'}`).join('\n\n') + '\n';

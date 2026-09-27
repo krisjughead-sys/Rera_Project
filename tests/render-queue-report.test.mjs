@@ -51,3 +51,24 @@ test('rejects malformed input instead of producing a misleading empty report', (
   assert.throws(() => renderQueueReport({ issues: [] }, now), /issues and pullRequests arrays/);
   assert.throws(() => renderQueueReport({ issues: [{}], pullRequests: [] }, now), /Each issue needs/);
 });
+
+test('recognizes uppercase GitHub issue states and rejects unknown states', () => {
+  const copy = structuredClone(fixture);
+  copy.issues[4].state = 'OPEN';
+  assert.match(renderQueueReport(copy, now), /#105 Synthetic queued task.*stale >24h; no linked PR/);
+  copy.issues[4].state = 'pending';
+  assert.throws(() => renderQueueReport(copy, now), /Unknown issue state for #105/);
+});
+
+test('exposes an orphan draft PR and its missing checks', () => {
+  const copy = structuredClone(fixture);
+  copy.pullRequests.push({ number: 299, issueNumber: 999, url: 'https://github.com/example/test/pull/299', draft: true, author: 'builder' });
+  const report = renderQueueReport(copy, now);
+  assert.match(report, /## Blocked[\s\S]*PR #299.*issue #999 unavailable; CI unavailable; independent review unavailable/);
+});
+
+test('rejects duplicate issue numbers that would render misleading duplicate rows', () => {
+  const copy = structuredClone(fixture);
+  copy.issues.push(structuredClone(copy.issues[0]));
+  assert.throws(() => renderQueueReport(copy, now), /Duplicate issue #101/);
+});
