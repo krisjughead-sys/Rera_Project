@@ -292,3 +292,95 @@ test('search copy: names discover candidates, only the exact ID confirms identit
   assert.equal((p.renderSearch('p00000000002').match(/<h3>[^<]*<\/h3>/g) ?? []).length, 1, 'exact ID returns one candidate');
   assert.ok(!p.renderSearch('Sampel Heights').includes('<h3>'), 'a misspelling yields no similarity suggestions');
 });
+
+// Review finding B1 (comment 5854747324): a change read before the saved visit
+// must not appear under "since your last visit" on the Changes screen. The
+// chips and the Changes screen share one rule (afterVisit): a valid ISO date
+// strictly later than the visit date; the visit day, a missing date and a
+// malformed date are not "after".
+const section = (html, id) => textOf((html.match(new RegExp(`<section id="${id}">[^]*?</section>`)) ?? [''])[0]);
+function bootWith(mutate, opts) {
+  const copy = structuredClone(data);
+  mutate(copy);
+  const m = new Map();
+  if (opts.shortlist) m.set('rera05-synthetic-shortlist-v1', JSON.stringify(opts.shortlist));
+  if (opts.visit) m.set('rera05-synthetic-last-visit-v1', JSON.stringify(opts.visit));
+  return createPrototype(copy, { get: k => m.get(k) ?? null, set: (k, v) => m.set(k, v) }, () => new Date((opts.today ?? '2026-09-26') + 'T09:00:00Z'));
+}
+
+test('changes: a change read on 20 Sep is not "new since" a visit on 25 Sep, consistent with the chip', () => {
+  const { p } = boot({ shortlist: ['P00000000001'], visit: { date: '2026-09-25', illustrative: false } });
+  // Chip first: renderChanges records a new visit once it has rendered.
+  const v = p.visitSummary(p.byId('P00000000001'));
+  assert.deepEqual(v.changed, [], 'chip agrees: nothing changed since the visit');
+  assert.ok(v.notChecked.includes('Revised proposed completion'));
+  assert.match(textOf(p.shortlistChip(p.byId('P00000000001'))), /Not re-checked since your last visit on 25 Sep 2026/);
+  assert.deepEqual(p.changesSummary(p.byId('P00000000001')), { newSince: [], earlier: ['Revised proposed completion'], conflicts: [] });
+  const html = p.renderChanges();
+  const fresh = section(html, 'changes-new');
+  assert.match(fresh, /New since your last visit on 25 Sep 2026 No change read after your last visit on 25 Sep 2026\./);
+  assert.ok(!fresh.includes('P00000000001') && !fresh.includes('30 Jun 2028'), 'the 20 Sep change must not be presented as new');
+  const earlier = section(html, 'changes-earlier');
+  assert.match(earlier, /Earlier or undated changes Read on or before your last visit on 25 Sep 2026.*Revised proposed completion Before: not present \(read 15 Jun 2026\) After: 30 Jun 2028 \(read 20 Sep 2026\)/);
+});
+
+test('changes: a change read after the visit is new on both screens', () => {
+  const p = bootWith(c => { const f = c.projects[0].fields.find(f => f.dateKind === 'revised'); f.retrievedAt = '2026-09-24'; f.change.afterRetrievedAt = '2026-09-24'; }, { shortlist: ['P00000000001'], visit: { date: '2026-09-20', illustrative: true } });
+  assert.deepEqual(p.visitSummary(p.byId('P00000000001')).changed, ['Revised proposed completion']);
+  assert.match(textOf(p.shortlistChip(p.byId('P00000000001'))), /Changed since your illustrative last visit on 20 Sep 2026: Revised proposed completion/);
+  const html = p.renderChanges();
+  assert.match(section(html, 'changes-new'), /New since your illustrative last visit on 20 Sep 2026 Sample Heights Phase 1 P00000000001 Revised proposed completion .*read 24 Sep 2026/);
+  assert.equal(section(html, 'changes-earlier'), '');
+});
+
+test('changes: a read on the visit day itself is not after the visit (date-only cutoff)', () => {
+  const { p } = boot({ shortlist: ['P00000000001'], visit: { date: '2026-09-20', illustrative: true } });
+  assert.equal(p.afterVisit('2026-09-20', { date: '2026-09-20' }), false);
+  assert.equal(p.afterVisit('2026-09-21', { date: '2026-09-20' }), true);
+  assert.deepEqual(p.visitSummary(p.byId('P00000000001')).changed, []);
+  const html = p.renderChanges();
+  assert.match(section(html, 'changes-new'), /No change read after your illustrative last visit on 20 Sep 2026/);
+  assert.match(section(html, 'changes-earlier'), /read 20 Sep 2026/);
+});
+
+test('changes: a failed later re-check is never a new change', () => {
+  const { p } = boot({ shortlist: ['P00000000002'], visit: { date: '2026-09-01', illustrative: true } });
+  const v = p.visitSummary(p.byId('P00000000002'));
+  assert.deepEqual(v.changed, []);
+  assert.deepEqual(v.couldNotVerify, ['Revised proposed completion', 'Litigation', 'Location on map']);
+  const html = p.renderChanges();
+  assert.match(section(html, 'changes-new'), /No change read after your illustrative last visit on 01 Sep 2026/);
+  assert.equal(section(html, 'changes-earlier'), '');
+});
+
+test('changes: a missing or malformed after-read date cannot make a change "new since" the visit', () => {
+  for (const bad of [undefined, '', 'soon', '20/09/2026', '2026-9-2']) {
+    const p = bootWith(c => { const f = c.projects[0].fields.find(f => f.dateKind === 'revised'); if (bad === undefined) delete f.change.afterRetrievedAt; else f.change.afterRetrievedAt = bad; }, { shortlist: ['P00000000001'], visit: { date: '2026-09-01', illustrative: true } });
+    assert.equal(p.afterVisit(bad, { date: '2026-09-01' }), false, `after-read ${JSON.stringify(bad)} treated as after the visit`);
+    assert.deepEqual(p.visitSummary(p.byId('P00000000001')).changed, []);
+    assert.ok(!textOf(p.shortlistChip(p.byId('P00000000001'))).includes('Changed since'));
+    const html = p.renderChanges();
+    assert.ok(!section(html, 'changes-new').includes('P00000000001'), `bad date ${JSON.stringify(bad)} shown as new`);
+    assert.match(section(html, 'changes-earlier'), /Revised proposed completion .*After: 30 Jun 2028 \(read date not available\)/);
+  }
+  assert.equal(bootWith(() => {}, {}).afterVisit('2026-09-20', { date: 'not-a-date' }), false, 'a malformed stored visit supports no claim');
+});
+
+test('changes: every fixture and visit date classifies each change identically on the chip and the Changes screen', () => {
+  for (const date of ['2026-06-15', '2026-09-01', '2026-09-20', '2026-09-25', '2027-01-01']) {
+    const { p } = boot({ visit: { date, illustrative: true } });
+    for (const rec of p.RECORDS.filter(r => !r.mismatch)) {
+      const chip = p.visitSummary(rec);
+      const screen = p.changesSummary(rec);
+      assert.deepEqual(screen.newSince, chip.changed, `${rec.reraId} at visit ${date}: chip and Changes disagree`);
+      for (const label of screen.earlier) assert.ok(!chip.changed.includes(label));
+    }
+  }
+  // First visit: nothing is claimed "since" anything; conflicts are listed as a current state.
+  const first = boot({ shortlist: ['P00000000001', 'P00000000003'] });
+  const html = first.p.renderChanges();
+  assert.ok(!html.includes('New since') && !html.includes('changes-earlier'));
+  assert.match(section(html, 'changes-all'), /Changes in our readings .*read 20 Sep 2026/);
+  assert.match(section(html, 'changes-conflicts'), /Official sources disagree A current contradiction in our readings, not a dated change\. Sample Heights P00000000003 Registration status/);
+  assert.ok(!textOf(html).toLowerCase().includes('no change detected'));
+});

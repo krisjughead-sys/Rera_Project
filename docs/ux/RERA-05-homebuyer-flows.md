@@ -192,6 +192,7 @@ Annotations:
 - A change is always "before / after" with both retrieval dates and the document date of the after value. "Before: not present" is a statement about our earlier read, and is worded so.
 - A change from verified to unavailable is **not** shown as a change to the value. It is shown as "Could not re-verify on R; last verified value remains from R0", matching the AGENTS.md rule that a failed extraction never overwrites the last verified value.
 - Contradictions are a change type of their own and never auto-resolve to the newer document.
+- The Changes screen never presents an old change as new. With a saved visit it has two dated sections: "New since your last visit on <date>" (only change events whose after-read date is strictly later than the visit date) and "Earlier or undated changes" (read on or before the visit, or with no usable read date). Contradictions sit in their own "Official sources disagree" section as a current state, not a dated event. The chip and the Changes screen use one rule (`afterVisit` in `core.js`): a valid ISO date strictly later than the visit date is after it; the visit day itself, a missing date and a malformed date are not, so no "new since" claim is made that the data cannot support. A failed later read is never a change (adversarial F22).
 
 ### 3.5 Return later
 

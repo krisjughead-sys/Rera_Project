@@ -97,12 +97,22 @@
       return `<div class="field"><dt>${esc(f.label)}</dt><dd>${body}</dd></div>`;
     }
 
+    // The one rule for "after the visit", shared by the shortlist chips and the
+    // Changes screen so both say the same thing about the same event. The visit
+    // is a calendar date, so: a valid ISO date strictly later than the visit
+    // date is after it; the visit day itself, a missing date and a malformed
+    // date are NOT after it (we cannot support the claim, so we do not make it).
+    const afterVisit = (iso, lv) => !!(lv && isDate(iso) && isDate(lv.date) && iso > lv.date);
+    // A change event is "new since the visit" only by the read that produced
+    // its after value. A failed later read is never a change.
+    const changeAfterVisit = (f, lv) => !!(f.change && afterVisit(f.change.afterRetrievedAt, lv));
+
     // Per-field return-later summary. Never speaks for fields that were not re-read.
     function visitSummary(p) {
       const lv = lastVisit();
       if (!lv || p.mismatch) return null;
-      const later = f => { const r = fieldReadAt(f); return !!(r && r > lv.date); };
-      const changed = p.fields.filter(f => f.change && f.change.afterRetrievedAt > lv.date).map(f => f.label);
+      const later = f => afterVisit(fieldReadAt(f), lv);
+      const changed = p.fields.filter(f => changeAfterVisit(f, lv)).map(f => f.label);
       // A later verified reading does not establish that the value stayed the
       // same: this snapshot has no before value for fields without a change
       // event. Describe the verification, not an inferred absence of change.
@@ -197,27 +207,51 @@
         rows.map(([label, key, kind]) => `<tr><th scope="row" data-col="">${esc(label)}</th><td data-col="${esc(a.name)}">${cell(a, key, kind)}</td><td data-col="${esc(b.name)}">${cell(b, key, kind)}</td></tr>`).join('') + `</tbody></table>`;
     }
 
+    // Buckets the change cards for the Changes screen with the same rule as the
+    // chips: a change is "new since the visit" only if its after-read date is
+    // after the saved visit; otherwise it is "earlier or undated". Contradictions
+    // are a current state, not a dated event, and are listed separately.
+    function changesSummary(p) {
+      const lv = lastVisit();
+      if (p.mismatch) return { newSince: [], earlier: [], conflicts: [] };
+      const changes = p.fields.filter(f => f.change);
+      return {
+        newSince: lv ? changes.filter(f => changeAfterVisit(f, lv)).map(f => f.label) : [],
+        earlier: (lv ? changes.filter(f => !changeAfterVisit(f, lv)) : changes).map(f => f.label),
+        conflicts: p.fields.filter(f => f.status === 'conflict').map(f => f.label),
+      };
+    }
+
     // Renders the Changes screen and then records this visit (real clock).
     function renderChanges() {
       const lv = lastVisit();
       const list = read();
-      const cards = [];
-      for (const p of RECORDS.filter(p => list.includes(p.reraId) || !list.length)) {
-        if (p.mismatch) continue;
-        for (const f of p.fields) {
-          if (f.change) cards.push(`<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div><div>Before: ${f.change.before ? fmtDate(f.change.before) : 'not present'} (read ${fmtDate(f.change.beforeRetrievedAt)})</div><div>After: ${fmtDate(f.change.after)} (read ${fmtDate(f.change.afterRetrievedAt)})</div><div class="prov">Document dated ${fmtDate(f.documentDate)} · <a href="${esc(f.sourceUrl)}" rel="noopener">View ›</a></div><div class="explain compact"><b>What this means:</b> the register now shows a revised date. Your agreement date may differ.</div></article>`);
-          if (f.status === 'conflict') cards.push(`<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div>${fieldRow(f)}</article>`);
-        }
+      const shown = RECORDS.filter(p => !p.mismatch && (list.includes(p.reraId) || !list.length));
+      const changeCard = (p, f) => `<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div><div>Before: ${f.change.before ? fmtDate(f.change.before) : 'not present'} (read ${fmtDate(f.change.beforeRetrievedAt)})</div><div>After: ${fmtDate(f.change.after)} (read ${isDate(f.change.afterRetrievedAt) ? fmtDate(f.change.afterRetrievedAt) : 'date not available'})</div><div class="prov">Document dated ${fmtDate(f.documentDate)} · <a href="${esc(f.sourceUrl)}" rel="noopener">View ›</a></div><div class="explain compact"><b>What this means:</b> the register now shows a revised date. Your agreement date may differ.</div></article>`;
+      const conflictCard = (p, f) => `<article class="card"><h3>${esc(p.name)}</h3><span class="id">${esc(p.reraId)}</span><div><b>${esc(f.label)}</b></div>${fieldRow(f)}</article>`;
+      const sections = [];
+      const since = lv ? `your ${lv.illustrative ? 'illustrative ' : ''}last visit on ${fmtDate(lv.date)}` : '';
+      const pick = (p, labels) => p.fields.filter(f => labels.includes(f.label));
+      if (lv) {
+        const fresh = shown.flatMap(p => pick(p, changesSummary(p).newSince).map(f => changeCard(p, f)));
+        sections.push(`<section id="changes-new"><h2>New since ${esc(since)}</h2>` + (fresh.length ? fresh.join('') : `<p>No change read after ${esc(since)}. This is not a statement that nothing changed on the official site; see which fields were re-checked on each shortlist card.</p>`) + `</section>`);
+        const old = shown.flatMap(p => pick(p, changesSummary(p).earlier).map(f => changeCard(p, f)));
+        if (old.length) sections.push(`<section id="changes-earlier"><h2>Earlier or undated changes</h2><p class="hint">Read on or before ${esc(since)}, or with no usable read date. Not new since that visit.</p>${old.join('')}</section>`);
+      } else {
+        const all = shown.flatMap(p => pick(p, changesSummary(p).earlier).map(f => changeCard(p, f)));
+        sections.push(`<section id="changes-all"><h2>Changes in our readings</h2>` + (all.length ? all.join('') : '<p>No change recorded in our readings. This is not a statement that nothing changed on the official site.</p>') + `</section>`);
       }
-      const visitLine = lv ? `Since your ${lv.illustrative ? 'illustrative ' : ''}last visit on ${fmtDate(lv.date)}.` : 'First visit: recorded now.';
-      const html = `<h1>Changes on your shortlist</h1><p class="hint">${visitLine} Readings are synthetic and dated ${fmtDate(DATA.generatedAt)}. Shown: ${list.length ? 'your shortlist' : 'all synthetic projects (shortlist empty)'}.</p>` +
-        (cards.length ? cards.join('') : '<p>No change detected in our readings. This is not a statement that nothing changed on the official site.</p>') +
+      const conflicts = shown.flatMap(p => pick(p, changesSummary(p).conflicts).map(f => conflictCard(p, f)));
+      if (conflicts.length) sections.push(`<section id="changes-conflicts"><h2>Official sources disagree</h2><p class="hint">A current contradiction in our readings, not a dated change.</p>${conflicts.join('')}</section>`);
+      const visitLine = lv ? `Since ${since}.` : 'First visit: recorded now.';
+      const html = `<h1>Changes on your shortlist</h1><p class="hint">${esc(visitLine)} Readings are synthetic and dated ${fmtDate(DATA.generatedAt)}. Shown: ${list.length ? 'your shortlist' : 'all synthetic projects (shortlist empty)'}.</p>` +
+        sections.join('') +
         `<div class="qa"><b>QA control (illustrative):</b> <button class="btn secondary" type="button" data-illustrative-visit="2026-09-01">Pretend my last visit was 01 Sep 2026</button> <span class="meta">Marks the stored visit as illustrative so the shortlist chips can show a change on this fixed dataset.</span></div>`;
       recordVisit();
       return html;
     }
 
-    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, shortlistChip, stateText, mismatchText, latestVerifiedAt, headline, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
+    return { RECORDS, byId, read, toggleShortlist, lastVisit, recordIllustrativeVisit, visitSummary, changesSummary, afterVisit, shortlistChip, stateText, mismatchText, latestVerifiedAt, headline, renderSearch, renderProject, renderCompare, renderChanges, fmtDate, daysSince };
   }
 
   if (typeof module !== 'undefined' && module.exports) module.exports = { createPrototype };
